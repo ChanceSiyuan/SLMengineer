@@ -1,0 +1,554 @@
+\documentclass[%
+	superscriptaddress,reprint,amsmath,amssymb,aps,pra,longbibliography]{revtex4-1}
+%\documentclass[%
+%	superscriptaddress,reprint,amsmath,amssymb,aps,pra]{revtex4-1}
+\usepackage{dcolumn} 
+\setcitestyle{numbers,super}
+\usepackage{placeins} % This is for the floatbarrier option at the end of the document
+\usepackage{upgreek}
+\usepackage{epstopdf} \usepackage{amsmath} \usepackage{physics} \usepackage{graphicx} 
+\usepackage{bm} \usepackage[margin=0.7in]{geometry}
+\usepackage{natbib}
+\usepackage{graphicx}
+\usepackage{physics}
+%\usepackage{mathptmx}
+\usepackage{newtxtext,newtxmath}
+
+
+\begin{document}
+\preprint{APS/123-QED}
+\title{
+Large-Scale Uniform Optical Focus Array Generation \\
+with a Phase Spatial Light Modulator
+}
+
+\author{Donggyu Kim}
+\email{donggyu@mit.edu}
+\affiliation{Department of Mechanical Engineering, Massachusetts Institute of Technology, 77 Massachusetts Ave, Cambridge, MA, 02139, USA}
+\affiliation{Department of Physics, Harvard University, 17 Oxford St, Cambridge, MA, 02138, USA}
+\affiliation{Research Laboratory of Electronics, Massachusetts Institute of Technology, 50 Vassar St, Cambridge, MA, 02139, USA}
+
+\author{Alexander Keesling}
+\affiliation{Department of Physics, Harvard University, 17 Oxford St, Cambridge, MA, 02138, USA}
+
+\author{Ahmed Omran} 
+\affiliation{Department of Physics, Harvard University, 17 Oxford St, Cambridge, MA, 02138, USA}
+
+\author{Harry Levine}
+\affiliation{Department of Physics, Harvard University, 17 Oxford St, Cambridge, MA, 02138, USA}
+    
+\author{\\Hannes Bernien}
+\thanks{Current address: Institute for Molecular Engineering, University of Chicago, IL 60637, USA
+}
+\affiliation{Department of Physics, Harvard University, 17 Oxford St, Cambridge, MA, 02138, USA}
+
+\author{Markus Greiner}
+\affiliation{Department of Physics, Harvard University, 17 Oxford St, Cambridge, MA, 02138, USA}
+
+\author{Mikhail D. Lukin}
+\affiliation{Department of Physics, Harvard University, 17 Oxford St, Cambridge, MA, 02138, USA}
+
+\author{Dirk R. Englund}
+\affiliation{Research Laboratory of Electronics, Massachusetts Institute of Technology, 50 Vassar St, Cambridge, MA, 02139, USA}
+\affiliation{Department of Electrical Engineering and Computer Science, Massachusetts Institute of Technology, 50 Vassar St, Cambridge, MA, 02139, USA}
+
+\begin{abstract}
+We report a new method to generate uniform large-scale optical focus arrays (LOFAs). 
+By identifying and removing undesired phase rotation in the iterative Fourier-transform algorithm (IFTA), our approach rapidly produces computer-generated holograms of highly uniform LOFAs. 
+The new algorithm also shows faster compensation of system-induced LOFA intensity inhomogeneity than the conventional IFTA. 
+After just three adaptive correction steps, we demonstrate LOFAs consisting of $\mathcal{O}(10^3)$ optical foci with $> 98\ \%$ intensity uniformity.
+\end{abstract}
+
+\maketitle
+
+Uniform optical focus arrays are essential for a range of applications, including wide-field laser-scanning microscopy\cite{pang2012wide}, multifocus multiphoton microscopy\cite{bahlmann2007multifocal}, and multi-beam laser machining\cite{obata2010multi}. Recently, such focus arrays were developed as an important tool for controlling arrays of ultra-cold atoms\cite{endres2016atom, barredo2016atom, kim2016situ} for quantum computing\cite{saffman2016quantum} and quantum simulation applications\cite{bernien2017probing,PhysRevX.8.021070}. However, a challenge in these applications is the efficient production of  uniform large-scale optical focus arrays. 
+
+A number of approaches have been developed to produce optical focus arrays, including the use of microlens arrays\cite{bahlmann2007multifocal,pang2012wide}, acousto-optic deflectors\cite{endres2016atom}, amplitude spatial light modulators (SLMs)\cite{gauthier2016direct}, and phase SLMs\cite{matsumoto2012high}. Among those, SLMs use programmable computer-generated holograms (CGHs) that enable (i) generating arbitrary focus array geometries\cite{nogrette2014single} and (ii) compensating for optical system imperfections \textit{in situ}\cite{vcivzmar2010situ,matsumoto2012high,nogrette2014single}.
+%zupancic2016ultra
+Additionally, phase SLMs make more efficient use of optical power than amplitude SLMs, which necessarily attenuate light fields. To determine phase-only CGHs, iterative Fourier-transform algorithms (IFTAs), originally devised by Gerchberg and Saxton\cite{gerchberg1972practical}, are widely used\cite{di2007computer,matsumoto2014adaptive,nogrette2014single,poland2014development,tamura2016highly}. 
+
+In this work, we demonstrate a new method for producing uniform large-scale optical focus arrays (LOFAs) with a phase SLM. By identifying and removing undesired phase rotation in the conventional IFTAs, our approach significantly reduces the number of iterations required to determine CGHs of highly uniform LOFAs consisting of $\mathcal{O}(10^3)$ optical foci. Moreover, we show that suppressing the phase rotation is essential to reliably compensate for system-induced intensity inhomogeneity, enabling rapid uniform LOFA generation in practice.
+
+\begin{figure}[!b] 
+\centering
+\includegraphics[scale=0.26]{Fig1.png}
+\caption{
+\textbf{Calculating computer-generated holograms (CGHs) of highly uniform large-scale optical focus arrays (LOFAs):} 
+\textbf{(a)} CGHs of LOFAs are determined by iteratively updating $\phi_i (\mathbf{x})$ based on the weighted-Gerchberg Saxton algorithm. In our approach, the phase $\psi_i (\mathbf{u})$ is fixed to $\psi_N (\mathbf{u})$ for $i \geq N$. FT and IFT refer to the two-dimensional Fourier and inverse Fourier transform, respectively. $\expval{B_i(\mathbf{u} )}_N  \doteq (1/N) \sum_{m=1} ^{N} B_i (\mathbf{u}_m)$.
+\textbf{(b)} $g_{i} (\mathbf{u}_m)$ updates $\phi_{i+1}(\mathbf{x})$ to reduce inhomogeneities in $B_i(\mathbf{u}_m)$ compared to $\expval{B_i(\mathbf{u} )}_N$. 
+\textbf{(c)} Substituting $A_{i+1} (\mathbf{x})$ with $\sqrt{I (\mathbf{x})}$ additionally introduces inhomogeneities in $B_{i+1}(\mathbf{u}_m)$ from a phase change $\delta\psi_i (\mathbf{u}_m)$.
+} 
+\end{figure}
+
+\begin{figure*}[t]
+\includegraphics[scale=1]{Fig2.pdf}
+\caption{\textbf{CGH calculation:} 
+\textbf{(a)} Our approach (dark blue) rapidly achieves a desired intensity non-uniformity ($< 0.5 \ \%$, standard deviation) across 50 by 30 optical foci, compared to the conventional Gerchberg-Saxton (GS, black) and weighted-GS (WGS, light blue) algorithms (bottom). In our approach, $\psi_i (\mathbf{u})$ is fixed to $\psi_{12} (\mathbf{u})$ with a modulation efficiency of $91.2 \ \%$ (top). 
+%$\sum_{\text{foci}}{I_m} / \int I(x) d^2 x  = 91.2 \ \%$. ($i' = 26$)
+\textbf{(b)} Calculated CGH $\Phi(\mathbf{x})$ superimposed with a phase grating to spatially separate the unmodulated zeroth order in the experiment. 
+\textbf{(c)} Expected LOFA at $\mathbf{u}$-plane with CGH shown in \textbf{(b)}.
+\textbf{(d)} Phase (left) and amplitude (right) progress of optical focus at $\mathbf{u}_{30}$ (blue) and $\mathbf{u}_{100}$ (red) during the iterative CGH calculation.
+\textbf{(e} and \textbf{f)} Comparison between our approach (dark blue) and the conventional WGS algorithm (light blue) for producing hexagonal lattice and disordered optical focus array, respectively. Insets plot expected LOFAs from iterative CGH calculation.
+} 
+\end{figure*}
+
+\begin{figure}[t]
+\centering
+%\includegraphics[scale=0.29]{Fig3.pdf}
+\includegraphics[scale=1]{Fig3.pdf}
+\caption{\textbf{Uniform 50 by 30 LOFA generation with adaptive CGH correction:} 
+\textbf{(a)} Adaptive correction with the conventional WGS algorithm (light green) and our phase-fixed method (dark green). Each point represents 8 ensembles of the repetitive adaptive correction, and error bars denote non-uniformity uncertainty (standard deviation) in the ensembles.
+\textbf{(b)} The CGH correction $\Phi^{(3)}(\mathbf{x}) - \Phi^{(0)}(\mathbf{x})$ determined by our phase-fixed method. 
+\textbf{(c)} CMOS camera raw image of 50 by 30 LOFA with $\Phi^{(3)}(\mathbf{x})$ (scale bar = 1 mm). The mean focus diameter ($1/\mathrm{e}^2$) is $15 \ \upmu \text{m}$. Inset shows a zoomed-in view. 
+\textbf{(d)} Intensity histogram of optical foci. The initial intensity non-uniformity is $22 \ \%$ (standard deviation, dark green), which is reduced down to $1.4 \ \%$ (red) with the CGH correction plotted in \textbf{(b)}.
+} 
+\end{figure}
+
+\section*{CGH Calculation}
+
+We produce LOFAs at the focal plane ($\mathbf{u}$-plane) of a focusing lens. A spatially coherent light beam is reflected by a phase-SLM placed at the lens's back focal plane ($\mathbf{x}$-plane). The reflected wavefront is shaped by a CGH $\Phi (\mathbf{x})$ displayed on the SLM, forming $N$ optical foci at $\mathbf{u}_m$ ($m = 1, 2, \cdots, N$). Our method to determine $\Phi (\mathbf{x})$ is based on the weighted-Gerchberg Saxton (WGS) algorithm\cite{di2007computer} outlined in Fig. 1(a). Here, we denote the fixed incident laser intensity pattern and the target LOFA  amplitude as $I(\mathbf{x})$ and $\mathcal{T}(\mathbf{u})$, respectively.
+
+Computing $\Phi (\mathbf{x})$ begins with the conventional WGS algorithm. The initial phase $\phi_1(\mathbf{x})$ of the algorithm consists of a random phase map uniformly distributed  from $-\pi$ to $\pi$. During the \textit{i}-th WGS iteration, the $\mathbf{u}$-plane amplitude $B_i (\mathbf{u})$ and phase $\psi_i (\mathbf{u})$ are calculated from the $\mathbf{x}$-plane amplitude $\sqrt{I(\mathbf{x})}$ and phase $\phi_i(\mathbf{x})$ by the two-dimensional Fourier transform (FT). While $\psi_i (\mathbf{u})$ is kept fixed, $B_i (\mathbf{u})$ is replaced by the target amplitude $\mathcal{T}(\mathbf{u})$ multiplied by the focus amplitude non-uniformity correction,
+\begin{equation*}
+g_{i} (\mathbf{u}) 
+= \left[ \sum_m \frac{\expval{B_i(\mathbf{u})}_N}{B_i (\mathbf{u}_m)}\delta (\mathbf{u} - \mathbf{u}_m)\right] \times g_{i-1} (\mathbf{u}).
+\end{equation*}
+Here, $\expval{B_i(\mathbf{u})}_N \doteq (1/N) \sum_{m=1} ^N B_i (\mathbf{u}_m)$; $\delta(\mathbf{u})$ is the Dirac-$\delta$ function; and $g_0(\mathbf{u})=1$. This $g_i(\mathbf{u})$ updates $\phi_{i+1}(\mathbf{x})$ to compensate for irregularities in $B_{i}(\mathbf{u}_m)$ (Fig. 1(b)). Then, the corresponding $\mathbf{x}$-plane amplitude $A_{i+1}(\mathbf{x})$ and phase $\phi_{i+1} (\mathbf{x})$ are computed by the inverse two-dimensional FT. While $\phi_{i+1}(\mathbf{x})$ is used for subsequent iteration, $A_{i+1}(\mathbf{x})$ is discarded. Note that $g_i(\mathbf{u})$ has memory of the previous corrections $g_{i-1}(\mathbf{u}), g_{i-2}(\mathbf{u}), \cdots , g_{0}(\mathbf{u})$. 
+
+This WGS iteration of $\phi_i (\mathbf{u})$ has made it possible to find a CGH $\Phi (\mathbf{x})$ of a highly uniform optical focus array\cite{di2007computer}. 
+However, we note that substituting the amplitude $A_{i+1}(\mathbf{x})$ with $\sqrt{I(\mathbf{x})}$ in the WGS iteration makes $g_i (\mathbf{u})$ less effective for the following reasons: Let us consider the Fourier-transform relation $\mathcal{F}[A_{i+1}(\mathbf{x})\mathrm{e}^{\mathrm{i}\phi_{i+1}(\mathbf{x})}] = g_i(\mathbf{u}) \mathcal{T}(\mathbf{u}) \mathrm{e}^{{\mathrm{i}\psi_i(\mathbf{u})}}$ in Fig. 1(a). The amplitude substitution introduces a change $\delta\psi_i(\mathbf{u})$ in phase, which is relatively large compared to a change $\delta g_i(\mathbf{u})$ in amplitude. Thus,
+\begin{align*}
+\mathcal{F}[\sqrt{I(\mathbf{x})}e^{\mathrm{i}\phi_{i+1}(\mathbf{x})}] 
+&\approx g_i(\mathbf{u}) \mathcal{T}(\mathbf{u}) \mathrm{e}^{{\mathrm{i}[\psi_i(\mathbf{u}) + \delta\psi_i(\mathbf{u})}]}\\
+&\approx \mathcal{F}[A_{i+1}(\mathbf{x})\mathrm{e}^{\mathrm{i}\phi_{i+1}(\mathbf{x})}]%\mathrm{e}^{\mathrm{i}\delta\psi_i(\mathbf{u})}
+(1 + \mathrm{i}\delta\psi_i(\mathbf{u})).
+\end{align*}
+This phase change $\delta \psi_i (\mathbf{u})$ makes $g_i (\mathbf{u})$ less effective, since (i) $\delta \psi_i (\mathbf{u})$ additionally introduces non-uniformity in $B_{i+1}(\mathbf{u}_m)$ that is unaccounted for $g_i (\mathbf{u})$ calculation (Fig. 1(b) and (c)) and (ii) this unaccounted effect is accumulated during the iterations through the memory in $g_i (\mathbf{u})$.
+
+We effectively remove the undesired phase change $\delta \psi_i (\mathbf{u})$. Though $\delta \psi_i(\mathbf{u})$ comes from the fixed laser intensity pattern, we note that this phase change is reflected in subsequent \textit{i}+1-th iteration  (i.e., $\psi_{i+1}(\mathbf{u}) = \psi_i(\mathbf{u}) + \delta \psi_i(\mathbf{u})$). After an initial WGS iteration of $N$ to reach a high modulation efficiency, our method removes $\delta \psi_i (\mathbf{u})$ in $i \geq N$ by fixing $\psi_i (\mathbf{u})$ to $\psi_N (\mathbf{u})$, which dramatically reduces the number of iterations to achieve a target LOFA uniformity. 
+Figure 2 plots the performance of the phase-fixed method for various LOFA geometries. 
+A similar phase-fixing technique was used in an earlier two-step optimization for kinoform design\cite{prongue1992optimized}.
+
+\section*{Uniform LOFA Generation with \\ Adaptive CGH Correction}
+Whereas a SLM displaying the CGH determined from the IFTAs should produce a highly uniform LOFAs, there is in practice significant inhomogeneity in the optical focus intensity, mainly due to imperfections in the optical setups and SLMs. It has been shown that such system-induced non-uniformity can be removed by adaptively correcting CGHs\cite{matsumoto2012high, matsumoto2014adaptive, nogrette2014single, poland2014development, tamura2016highly}. The generic scheme to find such CGH corrections uses the IFTAs with an adjusted target $\mathcal{T}(\mathbf{u})$ to compensate for the observed non-uniformity.
+
+We demonstrate here that our phase-fixed method reliably and rapidly finds the adaptive CGH corrections. In our experiments, a laser beam (wavelength $\lambda$ = 795 nm) is expanded through a telescope to fill the full area of a phase SLM (X13138-02, Hamamatsu). Displaying a CGH computed from the IFTAs produces a LOFA at the focal plane of an achromatic lens (f = 250 mm), which is then imaged with a CMOS camera (DC1645C, Thorlabs). We define the initial uncorrected $\Phi(\mathbf{x})$ and its corresponding target $\mathcal{T}(\mathbf{u})$ as $\Phi^{(0)}(\mathbf{x})$ and $\mathcal{T}^{(0)}(\mathbf{u})$, respectively. 
+
+In finding the $j$-th corrected CGH $\Phi^{(j)}(\mathbf{x})$, the CMOS camera records the LOFA image produced by $\Phi^{(j-1)}(\mathbf{x})$. Based on the recorded focus intensity $I^{(j-1)}(\mathbf{u}_m)$, the target amplitude $\mathcal{T}^{(j)}(\mathbf{u})$ is adjusted to compensate for the intensity irregularities in $I^{(j-1)}(\mathbf{u}_m)$: 
+\begin{equation*}
+\mathcal{T}^{(j)}(\mathbf{u})
+= \left[ \sum_m \sqrt{\frac{\expval{I^{(j-1)}(\mathbf{u} )}_N}{I^{(j-1)}(\mathbf{u}_m)}}\delta (\mathbf{u} - \mathbf{u}_m)\right] \times \mathcal{T}^{(j-1)}(\mathbf{u}).
+\end{equation*}
+By using $\Phi^{(j-1)}(\mathbf{x})$ ($\mathcal{T}^{(j)}(\mathbf{u})$) as the initial phase (the target amplitude), $\Phi^{(j)}(\mathbf{x})$ is determined by either the conventional WGS algorithm or our phase-fixed method where the $\mathbf{u}$-plane phase $\psi_i (\mathbf{u})$ is fixed to $\psi_N(\mathbf{u})$ during the iteration for all $j$.
+
+We first apply the adaptive CGH corrections to produce a uniform LOFA consisting of 50 by 30 optical foci (Fig. 3). The uncorrected $\Phi^{(0)}(\mathbf{x})$ (Fig. 2(b)) initially results in a LOFA with an intensity non-uniformity of 22 \% (standard deviation). Applying the repetitive CGH correction successively reduces the non-uniformity as plotted in Fig. 3(a). Compared to the correction using the conventional WGS algorithm (light green), our phase-fixed method (dark green) performs more reliable and rapid CGH correction, achieving $1.59 \pm 0.18 \ \%$ non-uniformity only with three correction steps. The correction with the WGS algorithm achieves $6.47 \pm 2.14 \ \%$ with the same number of corrections.
+
+\begin{figure}[b] 
+\centering
+\includegraphics[scale=0.26]{Fig4.png}
+\caption{
+\textbf{Three-plane model:} 
+Ideal SLM and diffraction-limited focusing lens form the target LOFA ($\mathcal{T}^{(j)}(\mathbf{u}')\mathrm{e}^{\mathrm{i}\psi^{(j)}(\mathbf{u}')}$) at the lens' focal plane. All the system imperfections are lumped into a virtual imaging system, introducing the focus amplitude non-uniformity $\Delta \mathcal{T}^{(j)}(\mathbf{u}, \psi^{(j)}(\mathbf{u}'))$ at  the $\mathbf{u}$-plane.
+} 
+\end{figure}
+
+\begin{figure*}[t] 
+\centering
+\includegraphics[scale=1]{Fig5.pdf}
+\caption{\textbf{Hexagonal lattice and disordered LOFA generation:} 
+\textbf{(a)} Adaptive correction with the conventional WGS algorithm (light green) and our phase-fixed method (dark green). Each point represents 8 ensembles of the repetitive adaptive correction, and error bars denote non-uniformity uncertainty (standard deviation) in the ensembles.
+\textbf{(b)} (Left) uncorrected CGH $\Phi^{(0)}(\mathbf{x})$ superimposed with a phase grating to spatially separate the unmodulated zeroth order. (Right) the CGH correction $\Phi^{(5)}(\mathbf{x})-\Phi^{(0)}(\mathbf{x})$ determined by our phase-fixed method. 
+\textbf{(c)} CMOS camera raw image with $\Phi^{(5)}(\mathbf{x})$ (scale bar = 1 mm). Inset shows a zoomed-in view.
+\textbf{(d)-(f)} Same as \textbf{(a)-(c)} for disordered LOFA geometry.
+} 
+\end{figure*}
+
+The reliable and rapid correction due to our phase-fixed method can be understood from the three-plane model illustrated in Fig. 4. Here, the SLM and focusing lens are assumed to be ideal, thus $\Phi^{(j)}(\mathbf{x})$ forms the target $\mathcal{T}^{(j)}(\mathbf{u}') \exp [\mathrm{i}\psi^{(j)}(\mathbf{u}')]$ on the intermediate $\mathbf{u}'$-plane. $\psi^{(j)}(\mathbf{u}')$ is specified by running the \textit{j}-th correction IFTA. All the system-imperfections are lumped into a virtual imaging system that maps $\mathbf{u}'$- to $\mathbf{u}$-plane with a measured irregularity $\Delta \mathcal{T}^{(j)}(\mathbf{u})$. In this model, we ignore the non-uniformity expected from the IFTA ($\mathcal{O}(10^{-3})$), which is much smaller than one from the measurement ($\mathcal{O}(10^{-2})$). Note that $\Delta \mathcal{T}^{(j)} (\mathbf{u})$ clearly depends on $\psi^{(j)}(\mathbf{u}')$ in this configuration. 
+
+Let us first consider adaptive CGH corrections using the conventional WGS algorithm. When $\Phi^{(j)}(\mathbf{x})$ is computed from $\Phi^{(j-1)}(\mathbf{x})$, $\psi^{(j)}(\mathbf{u}')$ rotates from $\psi^{(j-1)} (\mathbf{u}')$. 
+This phase rotation introduces an additional non-uniformity in $\Delta \mathcal{T}^{(j)}(\mathbf{u})$, which is unaccounted when $\mathcal{T}^{(j)} (\mathbf{u})$ is adjusted from $\Delta \mathcal{T}^{(j-1)} (\mathbf{u})$. 
+Moreover, CMOS noise in $\Delta \mathcal{T}^{(j-1)} (\mathbf{u})$ also contributes to the phase rotation and adds the subsequent non-uniformity noise in $\Delta \mathcal{T}^{(j)}(\mathbf{u})$. 
+By contrast, our phase-fixed method to compute $\Phi^{(j)}(\mathbf{x})$ is free from such phase rotations, enabling reliable and rapid correction of $\Delta \mathcal{T}^{(j-1)} (\mathbf{u})$.
+ 
+The use of SLMs allows to generate arbitrary LOFA geometries such as a hexagonal lattice and disordered geometries (Fig. 5). These geometries in particular are useful for quantum many-body physics simulation\cite{gorg2018enhancement} and quantum optimization\cite{pichler2018quantum}. We demonstrate an uniform LOFA of the hexagonal lattice (disordered) geometry consisting of 720 (819) foci. By applying our phase-fixed method, we achieve a LOFA non-uniformity of $1.1 \pm  0.20 \ \%$ ($1.2 \pm 0.11 \ \%$) with the adaptively corrected CGH $\Phi^{(5)}(\mathbf{x})$ (Fig. 5(b) and (e)). Both cases show greater reliability and convergence of the phase-fixed method compared to the conventional WGS algorithm to counteract the system-induced non-uniformity.
+
+\vspace{5mm}
+
+\section*{Conclusion}
+We present a new method to generate uniform large-scale optical focus arrays (LOFAs) using a phase spatial light modulator. First, we identified and avoided the undesired phase rotation in the conventional weighted-Gerchberg Saxton (WGS) algorithm. As a result, our approach significantly reduces the number of iterations to determine CGHs of highly uniform LOFAs compared to the conventional WGS algorithm. Next, we experimentally showed that this phase-fixed approach allows us to more reliably and rapidly counteract optical system imperfections that degrade LOFA's intensity uniformity. With only three adaptive correction steps, our approach produces arbitrary LOFA geometries consisting of $\mathcal{O}(10^3)$ foci with a uniformity $> 98 \  \%$. This new algorithm that rapidly produces uniform LOFAs should benefit a range of applications including optical microscopy, optical information processing, and quantum control for atoms and solid-state quantum emitters. 
+
+\vspace{3mm}
+
+\section*{Acknowledgments}
+This work was supported by NSF, CUA, and Vannevar Bush Faculty Fellowship. D.K. was supported in part by the AFOSR MURI for Optimal Measurements for Scalable Quantum Technologies (FA9550-14-1-0052) and by the Army Research Office Multidisciplinary University Research Initiative (ARO MURI) biological transduction program. 
+
+
+%\bibliography{reference}
+
+%merlin.mbs apsrev4-1.bst 2010-07-25 4.21a (PWD, AO, DPC) hacked
+%Control: key (0)
+%Control: author (0) dotless jnrlst
+%Control: editor formatted (1) identically to author
+%Control: production of article title (0) allowed
+%Control: page (1) range
+%Control: year (0) verbatim
+%Control: production of eprint (0) enabled
+\begin{thebibliography}{21}%
+\makeatletter
+\providecommand \@ifxundefined [1]{%
+ \@ifx{#1\undefined}
+}%
+\providecommand \@ifnum [1]{%
+ \ifnum #1\expandafter \@firstoftwo
+ \else \expandafter \@secondoftwo
+ \fi
+}%
+\providecommand \@ifx [1]{%
+ \ifx #1\expandafter \@firstoftwo
+ \else \expandafter \@secondoftwo
+ \fi
+}%
+\providecommand \natexlab [1]{#1}%
+\providecommand \enquote  [1]{``#1''}%
+\providecommand \bibnamefont  [1]{#1}%
+\providecommand \bibfnamefont [1]{#1}%
+\providecommand \citenamefont [1]{#1}%
+\providecommand \href@noop [0]{\@secondoftwo}%
+\providecommand \href [0]{\begingroup \@sanitize@url \@href}%
+\providecommand \@href[1]{\@@startlink{#1}\@@href}%
+\providecommand \@@href[1]{\endgroup#1\@@endlink}%
+\providecommand \@sanitize@url [0]{\catcode `\\12\catcode `\$12\catcode
+  `\&12\catcode `\#12\catcode `\^12\catcode `\_12\catcode `\%12\relax}%
+\providecommand \@@startlink[1]{}%
+\providecommand \@@endlink[0]{}%
+\providecommand \url  [0]{\begingroup\@sanitize@url \@url }%
+\providecommand \@url [1]{\endgroup\@href {#1}{\urlprefix }}%
+\providecommand \urlprefix  [0]{URL }%
+\providecommand \Eprint [0]{\href }%
+\providecommand \doibase [0]{http://dx.doi.org/}%
+\providecommand \selectlanguage [0]{\@gobble}%
+\providecommand \bibinfo  [0]{\@secondoftwo}%
+\providecommand \bibfield  [0]{\@secondoftwo}%
+\providecommand \translation [1]{[#1]}%
+\providecommand \BibitemOpen [0]{}%
+\providecommand \bibitemStop [0]{}%
+\providecommand \bibitemNoStop [0]{.\EOS\space}%
+\providecommand \EOS [0]{\spacefactor3000\relax}%
+\providecommand \BibitemShut  [1]{\csname bibitem#1\endcsname}%
+\let\auto@bib@innerbib\@empty
+%</preamble>
+\bibitem [{\citenamefont {Pang}\ \emph {et~al.}(2012)\citenamefont {Pang},
+  \citenamefont {Han}, \citenamefont {Kato}, \citenamefont {Sternberg},\ and\
+  \citenamefont {Yang}}]{pang2012wide}%
+  \BibitemOpen
+  \bibfield  {author} {\bibinfo {author} {\bibfnamefont {Shuo}\ \bibnamefont
+  {Pang}}, \bibinfo {author} {\bibfnamefont {Chao}\ \bibnamefont {Han}},
+  \bibinfo {author} {\bibfnamefont {Mihoko}\ \bibnamefont {Kato}}, \bibinfo
+  {author} {\bibfnamefont {Paul~W}\ \bibnamefont {Sternberg}}, \ and\ \bibinfo
+  {author} {\bibfnamefont {Changhuei}\ \bibnamefont {Yang}},\ }\bibfield
+  {title} {\enquote {\bibinfo {title} {Wide and scalable field-of-view
+  talbot-grid-based fluorescence microscopy},}\ }\href@noop {} {\bibfield
+  {journal} {\bibinfo  {journal} {Optics letters}\ }\textbf {\bibinfo {volume}
+  {37}},\ \bibinfo {pages} {5018--5020} (\bibinfo {year} {2012})}\BibitemShut
+  {NoStop}%
+\bibitem [{\citenamefont {Bahlmann}\ \emph {et~al.}(2007)\citenamefont
+  {Bahlmann}, \citenamefont {So}, \citenamefont {Kirber}, \citenamefont
+  {Reich}, \citenamefont {Kosicki}, \citenamefont {McGonagle},\ and\
+  \citenamefont {Bellve}}]{bahlmann2007multifocal}%
+  \BibitemOpen
+  \bibfield  {author} {\bibinfo {author} {\bibfnamefont {Karsten}\ \bibnamefont
+  {Bahlmann}}, \bibinfo {author} {\bibfnamefont {Peter~TC}\ \bibnamefont {So}},
+  \bibinfo {author} {\bibfnamefont {Michael}\ \bibnamefont {Kirber}}, \bibinfo
+  {author} {\bibfnamefont {Robert}\ \bibnamefont {Reich}}, \bibinfo {author}
+  {\bibfnamefont {Bernard}\ \bibnamefont {Kosicki}}, \bibinfo {author}
+  {\bibfnamefont {William}\ \bibnamefont {McGonagle}}, \ and\ \bibinfo {author}
+  {\bibfnamefont {Karl}\ \bibnamefont {Bellve}},\ }\bibfield  {title} {\enquote
+  {\bibinfo {title} {Multifocal multiphoton microscopy (mmm) at a frame rate
+  beyond 600 hz},}\ }\href@noop {} {\bibfield  {journal} {\bibinfo  {journal}
+  {Optics express}\ }\textbf {\bibinfo {volume} {15}},\ \bibinfo {pages}
+  {10991--10998} (\bibinfo {year} {2007})}\BibitemShut {NoStop}%
+\bibitem [{\citenamefont {Obata}\ \emph {et~al.}(2010)\citenamefont {Obata},
+  \citenamefont {Koch}, \citenamefont {Hinze},\ and\ \citenamefont
+  {Chichkov}}]{obata2010multi}%
+  \BibitemOpen
+  \bibfield  {author} {\bibinfo {author} {\bibfnamefont {Kotaro}\ \bibnamefont
+  {Obata}}, \bibinfo {author} {\bibfnamefont {J{\"u}rgen}\ \bibnamefont
+  {Koch}}, \bibinfo {author} {\bibfnamefont {Ulf}\ \bibnamefont {Hinze}}, \
+  and\ \bibinfo {author} {\bibfnamefont {Boris~N}\ \bibnamefont {Chichkov}},\
+  }\bibfield  {title} {\enquote {\bibinfo {title} {Multi-focus two-photon
+  polymerization technique based on individually controlled phase
+  modulation},}\ }\href@noop {} {\bibfield  {journal} {\bibinfo  {journal}
+  {Optics express}\ }\textbf {\bibinfo {volume} {18}},\ \bibinfo {pages}
+  {17193--17200} (\bibinfo {year} {2010})}\BibitemShut {NoStop}%
+\bibitem [{\citenamefont {Endres}\ \emph {et~al.}(2016)\citenamefont {Endres},
+  \citenamefont {Bernien}, \citenamefont {Keesling}, \citenamefont {Levine},
+  \citenamefont {Anschuetz}, \citenamefont {Krajenbrink}, \citenamefont
+  {Senko}, \citenamefont {Vuletic}, \citenamefont {Greiner},\ and\
+  \citenamefont {Lukin}}]{endres2016atom}%
+  \BibitemOpen
+  \bibfield  {author} {\bibinfo {author} {\bibfnamefont {Manuel}\ \bibnamefont
+  {Endres}}, \bibinfo {author} {\bibfnamefont {Hannes}\ \bibnamefont
+  {Bernien}}, \bibinfo {author} {\bibfnamefont {Alexander}\ \bibnamefont
+  {Keesling}}, \bibinfo {author} {\bibfnamefont {Harry}\ \bibnamefont
+  {Levine}}, \bibinfo {author} {\bibfnamefont {Eric~R}\ \bibnamefont
+  {Anschuetz}}, \bibinfo {author} {\bibfnamefont {Alexandre}\ \bibnamefont
+  {Krajenbrink}}, \bibinfo {author} {\bibfnamefont {Crystal}\ \bibnamefont
+  {Senko}}, \bibinfo {author} {\bibfnamefont {Vladan}\ \bibnamefont {Vuletic}},
+  \bibinfo {author} {\bibfnamefont {Markus}\ \bibnamefont {Greiner}}, \ and\
+  \bibinfo {author} {\bibfnamefont {Mikhail~D}\ \bibnamefont {Lukin}},\
+  }\bibfield  {title} {\enquote {\bibinfo {title} {Atom-by-atom assembly of
+  defect-free one-dimensional cold atom arrays},}\ }\href@noop {} {\bibfield
+  {journal} {\bibinfo  {journal} {Science}\ }\textbf {\bibinfo {volume}
+  {354}},\ \bibinfo {pages} {1024--1027} (\bibinfo {year} {2016})}\BibitemShut
+  {NoStop}%
+\bibitem [{\citenamefont {Barredo}\ \emph {et~al.}(2016)\citenamefont
+  {Barredo}, \citenamefont {De~L{\'e}s{\'e}leuc}, \citenamefont {Lienhard},
+  \citenamefont {Lahaye},\ and\ \citenamefont {Browaeys}}]{barredo2016atom}%
+  \BibitemOpen
+  \bibfield  {author} {\bibinfo {author} {\bibfnamefont {Daniel}\ \bibnamefont
+  {Barredo}}, \bibinfo {author} {\bibfnamefont {Sylvain}\ \bibnamefont
+  {De~L{\'e}s{\'e}leuc}}, \bibinfo {author} {\bibfnamefont {Vincent}\
+  \bibnamefont {Lienhard}}, \bibinfo {author} {\bibfnamefont {Thierry}\
+  \bibnamefont {Lahaye}}, \ and\ \bibinfo {author} {\bibfnamefont {Antoine}\
+  \bibnamefont {Browaeys}},\ }\bibfield  {title} {\enquote {\bibinfo {title}
+  {An atom-by-atom assembler of defect-free arbitrary 2d atomic arrays},}\
+  }\href@noop {} {\bibfield  {journal} {\bibinfo  {journal} {Science}\ }\textbf
+  {\bibinfo {volume} {354}},\ \bibinfo {pages} {1021--1023} (\bibinfo {year}
+  {2016})}\BibitemShut {NoStop}%
+\bibitem [{\citenamefont {Kim}\ \emph {et~al.}(2016)\citenamefont {Kim},
+  \citenamefont {Lee}, \citenamefont {Lee}, \citenamefont {Jo}, \citenamefont
+  {Song},\ and\ \citenamefont {Ahn}}]{kim2016situ}%
+  \BibitemOpen
+  \bibfield  {author} {\bibinfo {author} {\bibfnamefont {Hyosub}\ \bibnamefont
+  {Kim}}, \bibinfo {author} {\bibfnamefont {Woojun}\ \bibnamefont {Lee}},
+  \bibinfo {author} {\bibfnamefont {Han-gyeol}\ \bibnamefont {Lee}}, \bibinfo
+  {author} {\bibfnamefont {Hanlae}\ \bibnamefont {Jo}}, \bibinfo {author}
+  {\bibfnamefont {Yunheung}\ \bibnamefont {Song}}, \ and\ \bibinfo {author}
+  {\bibfnamefont {Jaewook}\ \bibnamefont {Ahn}},\ }\bibfield  {title} {\enquote
+  {\bibinfo {title} {In situ single-atom array synthesis using dynamic
+  holographic optical tweezers},}\ }\href@noop {} {\bibfield  {journal}
+  {\bibinfo  {journal} {Nature communications}\ }\textbf {\bibinfo {volume}
+  {7}},\ \bibinfo {pages} {13317} (\bibinfo {year} {2016})}\BibitemShut
+  {NoStop}%
+\bibitem [{\citenamefont {Saffman}(2016)}]{saffman2016quantum}%
+  \BibitemOpen
+  \bibfield  {author} {\bibinfo {author} {\bibfnamefont {Mark}\ \bibnamefont
+  {Saffman}},\ }\bibfield  {title} {\enquote {\bibinfo {title} {Quantum
+  computing with atomic qubits and rydberg interactions: progress and
+  challenges},}\ }\href@noop {} {\bibfield  {journal} {\bibinfo  {journal}
+  {Journal of Physics B: Atomic, Molecular and Optical Physics}\ }\textbf
+  {\bibinfo {volume} {49}},\ \bibinfo {pages} {202001} (\bibinfo {year}
+  {2016})}\BibitemShut {NoStop}%
+\bibitem [{\citenamefont {Bernien}\ \emph {et~al.}(2017)\citenamefont
+  {Bernien}, \citenamefont {Schwartz}, \citenamefont {Keesling}, \citenamefont
+  {Levine}, \citenamefont {Omran}, \citenamefont {Pichler}, \citenamefont
+  {Choi}, \citenamefont {Zibrov}, \citenamefont {Endres}, \citenamefont
+  {Greiner} \emph {et~al.}}]{bernien2017probing}%
+  \BibitemOpen
+  \bibfield  {author} {\bibinfo {author} {\bibfnamefont {Hannes}\ \bibnamefont
+  {Bernien}}, \bibinfo {author} {\bibfnamefont {Sylvain}\ \bibnamefont
+  {Schwartz}}, \bibinfo {author} {\bibfnamefont {Alexander}\ \bibnamefont
+  {Keesling}}, \bibinfo {author} {\bibfnamefont {Harry}\ \bibnamefont
+  {Levine}}, \bibinfo {author} {\bibfnamefont {Ahmed}\ \bibnamefont {Omran}},
+  \bibinfo {author} {\bibfnamefont {Hannes}\ \bibnamefont {Pichler}}, \bibinfo
+  {author} {\bibfnamefont {Soonwon}\ \bibnamefont {Choi}}, \bibinfo {author}
+  {\bibfnamefont {Alexander~S}\ \bibnamefont {Zibrov}}, \bibinfo {author}
+  {\bibfnamefont {Manuel}\ \bibnamefont {Endres}}, \bibinfo {author}
+  {\bibfnamefont {Markus}\ \bibnamefont {Greiner}},  \emph {et~al.},\
+  }\bibfield  {title} {\enquote {\bibinfo {title} {Probing many-body dynamics
+  on a 51-atom quantum simulator},}\ }\href@noop {} {\bibfield  {journal}
+  {\bibinfo  {journal} {Nature}\ }\textbf {\bibinfo {volume} {551}},\ \bibinfo
+  {pages} {579} (\bibinfo {year} {2017})}\BibitemShut {NoStop}%
+\bibitem [{\citenamefont {Lienhard}\ \emph {et~al.}(2018)\citenamefont
+  {Lienhard}, \citenamefont {de~L\'es\'eleuc}, \citenamefont {Barredo},
+  \citenamefont {Lahaye}, \citenamefont {Browaeys}, \citenamefont {Schuler},
+  \citenamefont {Henry},\ and\ \citenamefont {L\"auchli}}]{PhysRevX.8.021070}%
+  \BibitemOpen
+  \bibfield  {author} {\bibinfo {author} {\bibfnamefont {Vincent}\ \bibnamefont
+  {Lienhard}}, \bibinfo {author} {\bibfnamefont {Sylvain}\ \bibnamefont
+  {de~L\'es\'eleuc}}, \bibinfo {author} {\bibfnamefont {Daniel}\ \bibnamefont
+  {Barredo}}, \bibinfo {author} {\bibfnamefont {Thierry}\ \bibnamefont
+  {Lahaye}}, \bibinfo {author} {\bibfnamefont {Antoine}\ \bibnamefont
+  {Browaeys}}, \bibinfo {author} {\bibfnamefont {Michael}\ \bibnamefont
+  {Schuler}}, \bibinfo {author} {\bibfnamefont {Louis-Paul}\ \bibnamefont
+  {Henry}}, \ and\ \bibinfo {author} {\bibfnamefont {Andreas~M.}\ \bibnamefont
+  {L\"auchli}},\ }\bibfield  {title} {\enquote {\bibinfo {title} {Observing the
+  space- and time-dependent growth of correlations in dynamically tuned
+  synthetic ising models with antiferromagnetic interactions},}\ }\href
+  {\doibase 10.1103/PhysRevX.8.021070} {\bibfield  {journal} {\bibinfo
+  {journal} {Phys. Rev. X}\ }\textbf {\bibinfo {volume} {8}},\ \bibinfo {pages}
+  {021070} (\bibinfo {year} {2018})}\BibitemShut {NoStop}%
+\bibitem [{\citenamefont {Gauthier}\ \emph {et~al.}(2016)\citenamefont
+  {Gauthier}, \citenamefont {Lenton}, \citenamefont {Parry}, \citenamefont
+  {Baker}, \citenamefont {Davis}, \citenamefont {Rubinsztein-Dunlop},\ and\
+  \citenamefont {Neely}}]{gauthier2016direct}%
+  \BibitemOpen
+  \bibfield  {author} {\bibinfo {author} {\bibfnamefont {G}~\bibnamefont
+  {Gauthier}}, \bibinfo {author} {\bibfnamefont {I}~\bibnamefont {Lenton}},
+  \bibinfo {author} {\bibfnamefont {N~McKay}\ \bibnamefont {Parry}}, \bibinfo
+  {author} {\bibfnamefont {M}~\bibnamefont {Baker}}, \bibinfo {author}
+  {\bibfnamefont {MJ}~\bibnamefont {Davis}}, \bibinfo {author} {\bibfnamefont
+  {H}~\bibnamefont {Rubinsztein-Dunlop}}, \ and\ \bibinfo {author}
+  {\bibfnamefont {TW}~\bibnamefont {Neely}},\ }\bibfield  {title} {\enquote
+  {\bibinfo {title} {Direct imaging of a digital-micromirror device for
+  configurable microscopic optical potentials},}\ }\href@noop {} {\bibfield
+  {journal} {\bibinfo  {journal} {Optica}\ }\textbf {\bibinfo {volume} {3}},\
+  \bibinfo {pages} {1136--1143} (\bibinfo {year} {2016})}\BibitemShut {NoStop}%
+\bibitem [{\citenamefont {Matsumoto}\ \emph {et~al.}(2012)\citenamefont
+  {Matsumoto}, \citenamefont {Inoue}, \citenamefont {Ando}, \citenamefont
+  {Takiguchi}, \citenamefont {Ohtake},\ and\ \citenamefont
+  {Toyoda}}]{matsumoto2012high}%
+  \BibitemOpen
+  \bibfield  {author} {\bibinfo {author} {\bibfnamefont {Naoya}\ \bibnamefont
+  {Matsumoto}}, \bibinfo {author} {\bibfnamefont {Takashi}\ \bibnamefont
+  {Inoue}}, \bibinfo {author} {\bibfnamefont {Taro}\ \bibnamefont {Ando}},
+  \bibinfo {author} {\bibfnamefont {Yu}~\bibnamefont {Takiguchi}}, \bibinfo
+  {author} {\bibfnamefont {Yoshiyuki}\ \bibnamefont {Ohtake}}, \ and\ \bibinfo
+  {author} {\bibfnamefont {Haruyoshi}\ \bibnamefont {Toyoda}},\ }\bibfield
+  {title} {\enquote {\bibinfo {title} {High-quality generation of a multispot
+  pattern using a spatial light modulator with adaptive feedback},}\
+  }\href@noop {} {\bibfield  {journal} {\bibinfo  {journal} {Optics letters}\
+  }\textbf {\bibinfo {volume} {37}},\ \bibinfo {pages} {3135--3137} (\bibinfo
+  {year} {2012})}\BibitemShut {NoStop}%
+\bibitem [{\citenamefont {Nogrette}\ \emph {et~al.}(2014)\citenamefont
+  {Nogrette}, \citenamefont {Labuhn}, \citenamefont {Ravets}, \citenamefont
+  {Barredo}, \citenamefont {B{\'e}guin}, \citenamefont {Vernier}, \citenamefont
+  {Lahaye},\ and\ \citenamefont {Browaeys}}]{nogrette2014single}%
+  \BibitemOpen
+  \bibfield  {author} {\bibinfo {author} {\bibfnamefont {Florence}\
+  \bibnamefont {Nogrette}}, \bibinfo {author} {\bibfnamefont {Henning}\
+  \bibnamefont {Labuhn}}, \bibinfo {author} {\bibfnamefont {Sylvain}\
+  \bibnamefont {Ravets}}, \bibinfo {author} {\bibfnamefont {Daniel}\
+  \bibnamefont {Barredo}}, \bibinfo {author} {\bibfnamefont {Lucas}\
+  \bibnamefont {B{\'e}guin}}, \bibinfo {author} {\bibfnamefont {Aline}\
+  \bibnamefont {Vernier}}, \bibinfo {author} {\bibfnamefont {Thierry}\
+  \bibnamefont {Lahaye}}, \ and\ \bibinfo {author} {\bibfnamefont {Antoine}\
+  \bibnamefont {Browaeys}},\ }\bibfield  {title} {\enquote {\bibinfo {title}
+  {Single-atom trapping in holographic 2d arrays of microtraps with arbitrary
+  geometries},}\ }\href@noop {} {\bibfield  {journal} {\bibinfo  {journal}
+  {Physical Review X}\ }\textbf {\bibinfo {volume} {4}},\ \bibinfo {pages}
+  {021034} (\bibinfo {year} {2014})}\BibitemShut {NoStop}%
+\bibitem [{\citenamefont {{\v{C}}i{\v{z}}m{\'a}r}\ \emph
+  {et~al.}(2010)\citenamefont {{\v{C}}i{\v{z}}m{\'a}r}, \citenamefont
+  {Mazilu},\ and\ \citenamefont {Dholakia}}]{vcivzmar2010situ}%
+  \BibitemOpen
+  \bibfield  {author} {\bibinfo {author} {\bibfnamefont {Tom{\'a}{\v{s}}}\
+  \bibnamefont {{\v{C}}i{\v{z}}m{\'a}r}}, \bibinfo {author} {\bibfnamefont
+  {Michael}\ \bibnamefont {Mazilu}}, \ and\ \bibinfo {author} {\bibfnamefont
+  {Kishan}\ \bibnamefont {Dholakia}},\ }\bibfield  {title} {\enquote {\bibinfo
+  {title} {In situ wavefront correction and its application to
+  micromanipulation},}\ }\href@noop {} {\bibfield  {journal} {\bibinfo
+  {journal} {Nature Photonics}\ }\textbf {\bibinfo {volume} {4}},\ \bibinfo
+  {pages} {388} (\bibinfo {year} {2010})}\BibitemShut {NoStop}%
+\bibitem [{\citenamefont {Gerchberg}(1972)}]{gerchberg1972practical}%
+  \BibitemOpen
+  \bibfield  {author} {\bibinfo {author} {\bibfnamefont {Ralph~W}\ \bibnamefont
+  {Gerchberg}},\ }\bibfield  {title} {\enquote {\bibinfo {title} {A practical
+  algorithm for the determination of phase from image and diffraction plane
+  pictures},}\ }\href@noop {} {\bibfield  {journal} {\bibinfo  {journal}
+  {Optik}\ }\textbf {\bibinfo {volume} {35}},\ \bibinfo {pages} {237--246}
+  (\bibinfo {year} {1972})}\BibitemShut {NoStop}%
+\bibitem [{\citenamefont {Di~Leonardo}\ \emph {et~al.}(2007)\citenamefont
+  {Di~Leonardo}, \citenamefont {Ianni},\ and\ \citenamefont
+  {Ruocco}}]{di2007computer}%
+  \BibitemOpen
+  \bibfield  {author} {\bibinfo {author} {\bibfnamefont {Roberto}\ \bibnamefont
+  {Di~Leonardo}}, \bibinfo {author} {\bibfnamefont {Francesca}\ \bibnamefont
+  {Ianni}}, \ and\ \bibinfo {author} {\bibfnamefont {Giancarlo}\ \bibnamefont
+  {Ruocco}},\ }\bibfield  {title} {\enquote {\bibinfo {title} {Computer
+  generation of optimal holograms for optical trap arrays},}\ }\href@noop {}
+  {\bibfield  {journal} {\bibinfo  {journal} {Optics Express}\ }\textbf
+  {\bibinfo {volume} {15}},\ \bibinfo {pages} {1913--1922} (\bibinfo {year}
+  {2007})}\BibitemShut {NoStop}%
+\bibitem [{\citenamefont {Matsumoto}\ \emph {et~al.}(2014)\citenamefont
+  {Matsumoto}, \citenamefont {Okazaki}, \citenamefont {Fukushi}, \citenamefont
+  {Takamoto}, \citenamefont {Inoue},\ and\ \citenamefont
+  {Terakawa}}]{matsumoto2014adaptive}%
+  \BibitemOpen
+  \bibfield  {author} {\bibinfo {author} {\bibfnamefont {Naoya}\ \bibnamefont
+  {Matsumoto}}, \bibinfo {author} {\bibfnamefont {Shigetoshi}\ \bibnamefont
+  {Okazaki}}, \bibinfo {author} {\bibfnamefont {Yasuko}\ \bibnamefont
+  {Fukushi}}, \bibinfo {author} {\bibfnamefont {Hisayoshi}\ \bibnamefont
+  {Takamoto}}, \bibinfo {author} {\bibfnamefont {Takashi}\ \bibnamefont
+  {Inoue}}, \ and\ \bibinfo {author} {\bibfnamefont {Susumu}\ \bibnamefont
+  {Terakawa}},\ }\bibfield  {title} {\enquote {\bibinfo {title} {An adaptive
+  approach for uniform scanning in multifocal multiphoton microscopy with a
+  spatial light modulator},}\ }\href@noop {} {\bibfield  {journal} {\bibinfo
+  {journal} {Optics Express}\ }\textbf {\bibinfo {volume} {22}},\ \bibinfo
+  {pages} {633--645} (\bibinfo {year} {2014})}\BibitemShut {NoStop}%
+\bibitem [{\citenamefont {Poland}\ \emph {et~al.}(2014)\citenamefont {Poland},
+  \citenamefont {Krstaji{\'c}}, \citenamefont {Knight}, \citenamefont
+  {Henderson},\ and\ \citenamefont {Ameer-Beg}}]{poland2014development}%
+  \BibitemOpen
+  \bibfield  {author} {\bibinfo {author} {\bibfnamefont {Simon~P}\ \bibnamefont
+  {Poland}}, \bibinfo {author} {\bibfnamefont {Nikola}\ \bibnamefont
+  {Krstaji{\'c}}}, \bibinfo {author} {\bibfnamefont {Robert~D}\ \bibnamefont
+  {Knight}}, \bibinfo {author} {\bibfnamefont {Robert~K}\ \bibnamefont
+  {Henderson}}, \ and\ \bibinfo {author} {\bibfnamefont {Simon~M}\ \bibnamefont
+  {Ameer-Beg}},\ }\bibfield  {title} {\enquote {\bibinfo {title} {Development
+  of a doubly weighted gerchberg--saxton algorithm for use in multibeam imaging
+  applications},}\ }\href@noop {} {\bibfield  {journal} {\bibinfo  {journal}
+  {Optics letters}\ }\textbf {\bibinfo {volume} {39}},\ \bibinfo {pages}
+  {2431--2434} (\bibinfo {year} {2014})}\BibitemShut {NoStop}%
+\bibitem [{\citenamefont {Tamura}\ \emph {et~al.}(2016)\citenamefont {Tamura},
+  \citenamefont {Unakami}, \citenamefont {He}, \citenamefont {Miyamoto},\ and\
+  \citenamefont {Nakagawa}}]{tamura2016highly}%
+  \BibitemOpen
+  \bibfield  {author} {\bibinfo {author} {\bibfnamefont {Hikaru}\ \bibnamefont
+  {Tamura}}, \bibinfo {author} {\bibfnamefont {Tomoyuki}\ \bibnamefont
+  {Unakami}}, \bibinfo {author} {\bibfnamefont {Jun}\ \bibnamefont {He}},
+  \bibinfo {author} {\bibfnamefont {Yoko}\ \bibnamefont {Miyamoto}}, \ and\
+  \bibinfo {author} {\bibfnamefont {Ken'ichi}\ \bibnamefont {Nakagawa}},\
+  }\bibfield  {title} {\enquote {\bibinfo {title} {Highly uniform holographic
+  microtrap arrays for single atom trapping using a feedback optimization of
+  in-trap fluorescence measurements},}\ }\href@noop {} {\bibfield  {journal}
+  {\bibinfo  {journal} {Optics express}\ }\textbf {\bibinfo {volume} {24}},\
+  \bibinfo {pages} {8132--8141} (\bibinfo {year} {2016})}\BibitemShut {NoStop}%
+\bibitem [{\citenamefont {Prongu{\'e}}\ \emph {et~al.}(1992)\citenamefont
+  {Prongu{\'e}}, \citenamefont {Herzig}, \citenamefont {D{\"a}ndliker},\ and\
+  \citenamefont {Gale}}]{prongue1992optimized}%
+  \BibitemOpen
+  \bibfield  {author} {\bibinfo {author} {\bibfnamefont {Damien}\ \bibnamefont
+  {Prongu{\'e}}}, \bibinfo {author} {\bibfnamefont {Hans-Peter}\ \bibnamefont
+  {Herzig}}, \bibinfo {author} {\bibfnamefont {Ren{\'e}}\ \bibnamefont
+  {D{\"a}ndliker}}, \ and\ \bibinfo {author} {\bibfnamefont {Michael~T}\
+  \bibnamefont {Gale}},\ }\bibfield  {title} {\enquote {\bibinfo {title}
+  {Optimized kinoform structures for highly efficient fan-out elements},}\
+  }\href@noop {} {\bibfield  {journal} {\bibinfo  {journal} {Applied optics}\
+  }\textbf {\bibinfo {volume} {31}},\ \bibinfo {pages} {5706--5711} (\bibinfo
+  {year} {1992})}\BibitemShut {NoStop}%
+\bibitem [{\citenamefont {G{\"o}rg}\ \emph {et~al.}(2018)\citenamefont
+  {G{\"o}rg}, \citenamefont {Messer}, \citenamefont {Sandholzer}, \citenamefont
+  {Jotzu}, \citenamefont {Desbuquois},\ and\ \citenamefont
+  {Esslinger}}]{gorg2018enhancement}%
+  \BibitemOpen
+  \bibfield  {author} {\bibinfo {author} {\bibfnamefont {Frederik}\
+  \bibnamefont {G{\"o}rg}}, \bibinfo {author} {\bibfnamefont {Michael}\
+  \bibnamefont {Messer}}, \bibinfo {author} {\bibfnamefont {Kilian}\
+  \bibnamefont {Sandholzer}}, \bibinfo {author} {\bibfnamefont {Gregor}\
+  \bibnamefont {Jotzu}}, \bibinfo {author} {\bibfnamefont {R{\'e}mi}\
+  \bibnamefont {Desbuquois}}, \ and\ \bibinfo {author} {\bibfnamefont {Tilman}\
+  \bibnamefont {Esslinger}},\ }\bibfield  {title} {\enquote {\bibinfo {title}
+  {Enhancement and sign change of magnetic correlations in a driven quantum
+  many-body system},}\ }\href@noop {} {\bibfield  {journal} {\bibinfo
+  {journal} {Nature}\ }\textbf {\bibinfo {volume} {553}},\ \bibinfo {pages}
+  {481} (\bibinfo {year} {2018})}\BibitemShut {NoStop}%
+\bibitem [{\citenamefont {Pichler}\ \emph {et~al.}(2018)\citenamefont
+  {Pichler}, \citenamefont {Wang}, \citenamefont {Zhou}, \citenamefont {Choi},\
+  and\ \citenamefont {Lukin}}]{pichler2018quantum}%
+  \BibitemOpen
+  \bibfield  {author} {\bibinfo {author} {\bibfnamefont {Hannes}\ \bibnamefont
+  {Pichler}}, \bibinfo {author} {\bibfnamefont {Sheng-Tao}\ \bibnamefont
+  {Wang}}, \bibinfo {author} {\bibfnamefont {Leo}\ \bibnamefont {Zhou}},
+  \bibinfo {author} {\bibfnamefont {Soonwon}\ \bibnamefont {Choi}}, \ and\
+  \bibinfo {author} {\bibfnamefont {Mikhail~D}\ \bibnamefont {Lukin}},\
+  }\bibfield  {title} {\enquote {\bibinfo {title} {Quantum optimization for
+  maximum independent set using rydberg atom arrays},}\ }\href@noop {}
+  {\bibfield  {journal} {\bibinfo  {journal} {arXiv preprint arXiv:1808.10816}\
+  } (\bibinfo {year} {2018})}\BibitemShut {NoStop}%
+\end{thebibliography}%
+
+\end{document}
+
+
+

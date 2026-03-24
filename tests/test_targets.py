@@ -1,0 +1,105 @@
+"""Tests for target pattern generators."""
+
+import numpy as np
+
+from slm.targets import (
+    gaussian_line,
+    hexagonal_grid,
+    lg_mode,
+    mask_from_target,
+    measure_region,
+    rectangular_grid,
+    spot_array,
+    top_hat,
+)
+
+
+def test_spot_array_positions(small_grid):
+    positions = np.array([[10, 10], [20, 20], [30, 30]])
+    target = spot_array(small_grid, positions)
+    for r, c in positions:
+        assert np.abs(target[r, c]) > 0
+    # Total non-zero count
+    assert np.count_nonzero(target) == 3
+
+
+def test_rectangular_grid_count(small_grid):
+    target, positions = rectangular_grid(small_grid, rows=3, cols=4, spacing=8)
+    assert len(positions) == 12
+    assert np.count_nonzero(target) == 12
+
+
+def test_hexagonal_grid_geometry(small_grid):
+    target, positions = hexagonal_grid(small_grid, rows=3, cols=4, spacing=10)
+    assert len(positions) > 0
+    # Check that odd rows are offset
+    row_0 = positions[positions[:, 0] == positions[0, 0]]
+    row_1_mask = positions[:, 0] != positions[0, 0]
+    if np.any(row_1_mask):
+        row_1 = positions[row_1_mask]
+        row_1_first = row_1[row_1[:, 0] == row_1[0, 0]]
+        if len(row_0) > 0 and len(row_1_first) > 0:
+            # Columns should differ between rows (hex offset)
+            assert row_0[0, 1] != row_1_first[0, 1]
+
+
+def test_top_hat_flatness(small_grid):
+    target = top_hat(small_grid, radius=10.0)
+    inside = np.abs(target) > 0
+    # All inside values should be equal
+    vals = np.abs(target[inside])
+    np.testing.assert_allclose(vals, vals[0], atol=1e-10)
+
+
+def test_top_hat_outside_zero(small_grid):
+    target = top_hat(small_grid, radius=10.0)
+    cy, cx = 31.5, 31.5
+    # Far corner should be zero
+    assert np.abs(target[0, 0]) == 0.0
+
+
+def test_gaussian_line_shape(small_grid):
+    target = gaussian_line(small_grid, length=20.0, width_sigma=3.0)
+    assert target.shape == small_grid
+    assert np.max(np.abs(target)) > 0
+
+
+def test_lg_mode_phase_winding():
+    shape = (64, 64)
+    field = lg_mode(shape, l=1, p=0, w0=10.0)
+    # Phase should wind by 2*pi around the center
+    cy, cx = 31.5, 31.5
+    r = 10  # radius for phase sampling
+    angles = np.linspace(0, 2 * np.pi, 100, endpoint=False)
+    phases = []
+    for a in angles:
+        row = int(cy + r * np.sin(a))
+        col = int(cx + r * np.cos(a))
+        if 0 <= row < 64 and 0 <= col < 64 and np.abs(field[row, col]) > 1e-10:
+            phases.append(np.angle(field[row, col]))
+    # Phase should span approximately 2*pi range
+    if len(phases) > 10:
+        phase_range = np.max(phases) - np.min(phases)
+        assert phase_range > np.pi  # at least half-winding visible
+
+
+def test_lg_mode_normalization():
+    field = lg_mode((64, 64), l=1, p=0, w0=10.0)
+    np.testing.assert_allclose(np.sum(np.abs(field) ** 2), 1.0, atol=1e-10)
+
+
+def test_mask_from_target_binary(small_grid):
+    target = top_hat(small_grid, radius=10.0)
+    mask = mask_from_target(target)
+    assert set(np.unique(mask)).issubset({0.0, 1.0})
+    assert np.sum(mask) > 0
+
+
+def test_measure_region_includes_target(small_grid):
+    target = top_hat(small_grid, radius=5.0)
+    region = measure_region(small_grid, target, margin=3)
+    mask = mask_from_target(target)
+    # Region should include all target positions
+    assert np.all(region[mask > 0] > 0)
+    # Region should be larger than target mask
+    assert np.sum(region) > np.sum(mask)
