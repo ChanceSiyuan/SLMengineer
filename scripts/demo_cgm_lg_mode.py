@@ -13,7 +13,7 @@ shape = (128, 128)
 input_amp = gaussian_beam(shape, sigma=30.0, normalize=False)
 
 # Target: LG^0_1 mode (ring with vortex phase)
-target = lg_mode(shape, l=1, p=0, w0=15.0)
+target = lg_mode(shape, ell=1, p=0, w0=15.0)
 # Scale target to have comparable power
 target = target * np.sqrt(np.sum(input_amp**2) / np.sum(np.abs(target) ** 2))
 region = measure_region(shape, target, margin=5)

@@ -3,7 +3,6 @@
 import numpy as np
 
 from slm.gs import gs
-from slm.metrics import uniformity
 
 
 def test_gs_converges(gaussian_field_64, four_spot_target_64):

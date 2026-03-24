@@ -1,6 +1,7 @@
 """Tests for quality metrics."""
 
 import numpy as np
+import pytest
 
 from slm.metrics import (
     efficiency,
@@ -74,6 +75,3 @@ def test_non_uniformity_error_perfect():
     mask = np.ones((8, 8))
     nu = non_uniformity_error(I_out, T, mask)
     assert nu == pytest.approx(0.0, abs=1e-10)
-
-
-import pytest

@@ -9,9 +9,7 @@ from slm.feedback import (
     adjust_target_weights,
     simulate_camera_measurement,
 )
-from slm.metrics import uniformity
 from slm.targets import mask_from_target, rectangular_grid
-from slm.transforms import generate_aberration
 
 
 def test_simulate_camera_measurement(rng):

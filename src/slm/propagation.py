@@ -29,7 +29,9 @@ def pad_field(field: np.ndarray, target_shape: tuple[int, int]) -> np.ndarray:
     ny, nx = field.shape
     ty, tx = target_shape
     if ty < ny or tx < nx:
-        raise ValueError(f"target_shape {target_shape} must be >= field shape {field.shape}")
+        raise ValueError(
+            f"target_shape {target_shape} must be >= field shape {field.shape}"
+        )
     if ty == ny and tx == nx:
         return field.copy()
     padded = np.zeros(target_shape, dtype=field.dtype)

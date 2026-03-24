@@ -1,7 +1,6 @@
 """Tests for Zernike polynomials and hologram transforms."""
 
 import numpy as np
-import pytest
 
 from slm.transforms import (
     anti_aliased_affine_transform,
@@ -24,7 +23,6 @@ def test_zernike_piston():
 def test_zernike_tilt_x():
     """Z_1^1 (x-tilt) should be linear in x."""
     Z = zernike(1, 1, (64, 64))
-    center = 31.5
     # Along the horizontal center line, should increase linearly
     line = Z[32, :]
     nonzero = line != 0
@@ -40,7 +38,6 @@ def test_zernike_orthonormality():
     shape = (128, 128)
     Z2 = zernike_from_noll(2, shape)
     Z3 = zernike_from_noll(3, shape)
-    Z4 = zernike_from_noll(4, shape)
 
     # Inner product of different modes should be ~0
     mask = (Z2 != 0) & (Z3 != 0)

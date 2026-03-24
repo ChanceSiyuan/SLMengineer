@@ -53,7 +53,9 @@ def adjust_target_weights(
     spot_positions = np.asarray(spot_positions)
     rows, cols = spot_positions[:, 0], spot_positions[:, 1]
     valid = measured_intensities > 0
-    correction = np.where(valid, np.sqrt(mean_intensity / np.maximum(measured_intensities, 1e-30)), 1.0)
+    correction = np.where(
+        valid, np.sqrt(mean_intensity / np.maximum(measured_intensities, 1e-30)), 1.0
+    )
     new_target[rows, cols] *= correction
     return new_target
 
@@ -123,9 +125,7 @@ def adaptive_feedback_loop(
         )
 
         # Adjust target weights
-        current_target = adjust_target_weights(
-            current_target, measured, spot_positions
-        )
+        current_target = adjust_target_weights(current_target, measured, spot_positions)
 
         # Use previous result as starting phase for next iteration
         current_field = slm_amp * np.exp(1j * result.slm_phase)

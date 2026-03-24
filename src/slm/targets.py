@@ -141,12 +141,12 @@ def gaussian_line(
 
 def lg_mode(
     shape: tuple[int, int],
-    l: int,
+    ell: int,
     p: int,
     w0: float,
     center: tuple[float, float] | None = None,
 ) -> np.ndarray:
-    """Laguerre-Gaussian mode LG^p_l.
+    """Laguerre-Gaussian mode LG^p_ell.
 
     Returns complex field with both amplitude and vortex phase.
     """
@@ -163,11 +163,11 @@ def lg_mode(
 
     rho = rr / w0
     amp = (
-        (np.sqrt(2) * rho) ** abs(l)
+        (np.sqrt(2) * rho) ** abs(ell)
         * np.exp(-(rho**2))
-        * assoc_laguerre(2 * rho**2, p, abs(l))
+        * assoc_laguerre(2 * rho**2, p, abs(ell))
     )
-    phase = l * theta
+    phase = ell * theta
     field = amp * np.exp(1j * phase)
     # Normalize
     power = np.sum(np.abs(field) ** 2)
@@ -219,16 +219,16 @@ def gaussian_lattice(
 
 def _apply_vortex_phase(
     field: np.ndarray,
-    l: int,
+    ell: int,
     center: tuple[float, float],
 ) -> np.ndarray:
-    """Replace field phase with global vortex exp(i*l*theta), preserve amplitude."""
+    """Replace field phase with global vortex exp(i*ell*theta), preserve amplitude."""
     ny, nx = field.shape
     y = np.arange(ny) - center[0]
     x = np.arange(nx) - center[1]
     yy, xx = np.meshgrid(y, x, indexing="ij")
     theta = np.arctan2(yy, xx)
-    return np.abs(field) * np.exp(1j * l * theta)
+    return np.abs(field) * np.exp(1j * ell * theta)
 
 
 def square_lattice_vortex(
@@ -237,7 +237,7 @@ def square_lattice_vortex(
     cols: int,
     spacing: float,
     peak_sigma: float,
-    l: int = 1,
+    ell: int = 1,
     center: tuple[float, float] | None = None,
 ) -> np.ndarray:
     """Square grid of Gaussian peaks with global vortex phase exp(i*l*theta)."""
@@ -251,7 +251,7 @@ def square_lattice_vortex(
     positions = np.column_stack([dr.ravel(), dc.ravel()])
 
     field = gaussian_lattice(shape, positions, peak_sigma, center=center)
-    field = _apply_vortex_phase(field, l, center)
+    field = _apply_vortex_phase(field, ell, center)
     power = np.sum(np.abs(field) ** 2)
     if power > 0:
         field /= np.sqrt(power)
@@ -263,7 +263,7 @@ def ring_lattice_vortex(
     n_sites: int,
     ring_radius: float,
     peak_sigma: float,
-    l: int = 1,
+    ell: int = 1,
     center: tuple[float, float] | None = None,
 ) -> np.ndarray:
     """Ring of Gaussian peaks with global vortex phase."""
@@ -272,13 +272,15 @@ def ring_lattice_vortex(
         center = ((ny - 1) / 2.0, (nx - 1) / 2.0)
 
     angles = np.linspace(0, 2 * np.pi, n_sites, endpoint=False)
-    positions = np.column_stack([
-        ring_radius * np.sin(angles),
-        ring_radius * np.cos(angles),
-    ])
+    positions = np.column_stack(
+        [
+            ring_radius * np.sin(angles),
+            ring_radius * np.cos(angles),
+        ]
+    )
 
     field = gaussian_lattice(shape, positions, peak_sigma, center=center)
-    field = _apply_vortex_phase(field, l, center)
+    field = _apply_vortex_phase(field, ell, center)
     power = np.sum(np.abs(field) ** 2)
     if power > 0:
         field /= np.sqrt(power)
@@ -354,13 +356,17 @@ def chicken_egg_pattern(
     # Smooth random intensity
     noise_amp = rng.standard_normal(shape)
     smooth_amp = gaussian_filter(noise_amp, sigma=8.0)
-    smooth_amp = (smooth_amp - smooth_amp.min()) / (smooth_amp.max() - smooth_amp.min() + 1e-30)
+    smooth_amp = (smooth_amp - smooth_amp.min()) / (
+        smooth_amp.max() - smooth_amp.min() + 1e-30
+    )
     amplitude = smooth_amp * disk
 
     # Independent smooth random phase
     noise_phase = rng.standard_normal(shape)
     smooth_phase = gaussian_filter(noise_phase, sigma=8.0)
-    smooth_phase = smooth_phase / (smooth_phase.max() - smooth_phase.min() + 1e-30) * 2 * np.pi
+    smooth_phase = (
+        smooth_phase / (smooth_phase.max() - smooth_phase.min() + 1e-30) * 2 * np.pi
+    )
 
     field = amplitude * np.exp(1j * smooth_phase)
     power = np.sum(np.abs(field) ** 2)

@@ -46,7 +46,9 @@ def modulation_efficiency(
     if total_power == 0:
         return 0.0
     spot_positions = np.asarray(spot_positions)
-    spot_power = np.sum(np.abs(output_field[spot_positions[:, 0], spot_positions[:, 1]]) ** 2)
+    spot_power = np.sum(
+        np.abs(output_field[spot_positions[:, 0], spot_positions[:, 1]]) ** 2
+    )
     return float(spot_power / total_power)
 
 

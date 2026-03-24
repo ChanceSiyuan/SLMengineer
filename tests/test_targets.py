@@ -53,7 +53,6 @@ def test_top_hat_flatness(small_grid):
 
 def test_top_hat_outside_zero(small_grid):
     target = top_hat(small_grid, radius=10.0)
-    cy, cx = 31.5, 31.5
     # Far corner should be zero
     assert np.abs(target[0, 0]) == 0.0
 
@@ -66,7 +65,7 @@ def test_gaussian_line_shape(small_grid):
 
 def test_lg_mode_phase_winding():
     shape = (64, 64)
-    field = lg_mode(shape, l=1, p=0, w0=10.0)
+    field = lg_mode(shape, ell=1, p=0, w0=10.0)
     # Phase should wind by 2*pi around the center
     cy, cx = 31.5, 31.5
     r = 10  # radius for phase sampling
@@ -84,7 +83,7 @@ def test_lg_mode_phase_winding():
 
 
 def test_lg_mode_normalization():
-    field = lg_mode((64, 64), l=1, p=0, w0=10.0)
+    field = lg_mode((64, 64), ell=1, p=0, w0=10.0)
     np.testing.assert_allclose(np.sum(np.abs(field) ** 2), 1.0, atol=1e-10)
 
 

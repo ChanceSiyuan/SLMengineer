@@ -105,7 +105,7 @@ def _cost_gradient(
     norm_B = np.sqrt(np.sum(np.abs(B) ** 2))
 
     if norm_A == 0 or norm_B == 0:
-        return np.zeros_like(slm_phase)
+        return np.zeros_like(E_in, dtype=np.float64)
 
     # Unnormalized inner product and real overlap
     r = np.sum(np.conj(A) * B)
@@ -172,10 +172,15 @@ def cgm(
             callback(i, cost)
 
         # Check convergence
-        if len(cost_history) > 1 and abs(cost_history[-1] - cost_history[-2]) < config.convergence_threshold:
+        if (
+            len(cost_history) > 1
+            and abs(cost_history[-1] - cost_history[-2]) < config.convergence_threshold
+        ):
             break
 
-        grad = _cost_gradient(E_in, E_out, target_field, measure_region, config.steepness)
+        grad = _cost_gradient(
+            E_in, E_out, target_field, measure_region, config.steepness
+        )
 
         # Conjugate direction (Polak-Ribiere-Polyak with periodic restart)
         if prev_grad is None or i % restart_interval == 0:
@@ -197,7 +202,9 @@ def cgm(
         def line_cost(alpha):
             phi_trial = phi + alpha * direction
             E_trial = fft_propagate(input_amplitude * np.exp(1j * phi_trial))
-            return _cost_function(E_trial, target_field, measure_region, config.steepness)
+            return _cost_function(
+                E_trial, target_field, measure_region, config.steepness
+            )
 
         # Adaptive bracket: start small and expand
         c0 = cost
@@ -211,7 +218,9 @@ def cgm(
             alpha_test = 1e-6
 
         result = minimize_scalar(
-            line_cost, bounds=(0, alpha_test * 10), method="bounded",
+            line_cost,
+            bounds=(0, alpha_test * 10),
+            method="bounded",
             options={"xatol": alpha_test * 1e-3},
         )
         alpha_opt = result.x

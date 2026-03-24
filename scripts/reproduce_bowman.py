@@ -58,12 +58,12 @@ def make_padded_input(sigma_px: float) -> np.ndarray:
 def build_patterns(shape: tuple[int, int], center: tuple[float, float]) -> dict:
     """Build all 7 target patterns at the offset center."""
     return {
-        "a) LG01": lg_mode(shape, l=1, p=0, w0=10.0, center=center),
+        "a) LG01": lg_mode(shape, ell=1, p=0, w0=10.0, center=center),
         "b) Square Lattice": square_lattice_vortex(
-            shape, rows=8, cols=8, spacing=14.0, peak_sigma=3.0, l=1, center=center,
+            shape, rows=8, cols=8, spacing=14.0, peak_sigma=3.0, ell=1, center=center,
         ),
         "c) Ring Lattice": ring_lattice_vortex(
-            shape, n_sites=12, ring_radius=25.0, peak_sigma=3.0, l=1, center=center,
+            shape, n_sites=12, ring_radius=25.0, peak_sigma=3.0, ell=1, center=center,
         ),
         "d) Graphene": graphene_lattice(
             shape, rows=4, cols=4, spacing=8.0, peak_sigma=2.5, center=center,

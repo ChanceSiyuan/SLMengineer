@@ -99,7 +99,9 @@ def apply_zernike_correction(
 
     phi_aligned = phi_WGS + sum(a_j * Z_j)
     """
-    return hologram_phase + generate_aberration(hologram_phase.shape, coefficients, radius)
+    return hologram_phase + generate_aberration(
+        hologram_phase.shape, coefficients, radius
+    )
 
 
 def anti_aliased_affine_transform(
@@ -130,10 +132,12 @@ def anti_aliased_affine_transform(
     sin_a = np.sin(rotation_angle)
     sy, sx = stretch
     # Rotation then stretch matrix (inverse for scipy affine_transform)
-    matrix = np.array([
-        [cos_a / sy, sin_a / sy],
-        [-sin_a / sx, cos_a / sx],
-    ])
+    matrix = np.array(
+        [
+            [cos_a / sy, sin_a / sy],
+            [-sin_a / sx, cos_a / sx],
+        ]
+    )
     center = np.array(hologram_phase.shape) / 2.0
     offset = center - matrix @ center
 

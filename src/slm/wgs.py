@@ -18,7 +18,9 @@ class WGSConfig:
 
     n_iterations: int = 200
     uniformity_threshold: float = 0.005
-    phase_fix_iteration: int | None = None  # N for phase-fixed variant; None = never fix
+    phase_fix_iteration: int | None = (
+        None  # N for phase-fixed variant; None = never fix
+    )
 
 
 @dataclass
@@ -108,7 +110,10 @@ def wgs(
                 fixed_phase = np.angle(R)
                 phase_fixed_at = i
             current_phase = fixed_phase
-        elif i == 0 or (mean_amp > 0 and np.max(spot_amps) / mean_amp - 1.0 > config.uniformity_threshold):
+        elif i == 0 or (
+            mean_amp > 0
+            and np.max(spot_amps) / mean_amp - 1.0 > config.uniformity_threshold
+        ):
             current_phase = np.angle(R)
         # else: keep current_phase from previous iteration
 

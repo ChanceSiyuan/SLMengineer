@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from slm.beams import gaussian_beam, initial_slm_field
+from slm.beams import initial_slm_field
 from slm.targets import mask_from_target, rectangular_grid, top_hat
 
 

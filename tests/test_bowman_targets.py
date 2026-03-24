@@ -1,7 +1,6 @@
 """Tests for Bowman paper target patterns."""
 
 import numpy as np
-import pytest
 
 from slm.targets import (
     chicken_egg_pattern,
@@ -24,7 +23,6 @@ class TestGaussianLattice:
     def test_peaks_at_positions(self):
         positions = np.array([[0, 0], [10, 0], [0, 10]])
         field = gaussian_lattice((64, 64), positions, peak_sigma=2.0)
-        center = (31.5, 31.5)
         # Peak near center (0,0 offset)
         assert np.abs(field[32, 32]) > np.abs(field[0, 0])
 
@@ -38,24 +36,29 @@ class TestGaussianLattice:
         phases = np.array([0.0, np.pi])
         field = gaussian_lattice((64, 64), positions, peak_sigma=2.0, phases=phases)
         # Two peaks should have opposite phase
-        cy, cx = 31.5, 31.5
         phase_a = np.angle(field[32, 32])
-        phase_b = np.angle(field[int(cy + 15), 32])
+        phase_b = np.angle(field[46, 32])  # 31.5 + 15 ≈ 46
         diff = np.abs(np.angle(np.exp(1j * (phase_b - phase_a))))
         assert diff > 2.5  # close to pi
 
 
 class TestSquareLatticeVortex:
     def test_shape(self):
-        field = square_lattice_vortex((128, 128), rows=4, cols=4, spacing=10, peak_sigma=2.0)
+        field = square_lattice_vortex(
+            (128, 128), rows=4, cols=4, spacing=10, peak_sigma=2.0
+        )
         assert field.shape == (128, 128)
 
     def test_normalization(self):
-        field = square_lattice_vortex((128, 128), rows=4, cols=4, spacing=10, peak_sigma=2.0)
+        field = square_lattice_vortex(
+            (128, 128), rows=4, cols=4, spacing=10, peak_sigma=2.0
+        )
         np.testing.assert_allclose(np.sum(np.abs(field) ** 2), 1.0, atol=1e-10)
 
     def test_intensity_symmetry(self):
-        field = square_lattice_vortex((128, 128), rows=4, cols=4, spacing=10, peak_sigma=2.0)
+        field = square_lattice_vortex(
+            (128, 128), rows=4, cols=4, spacing=10, peak_sigma=2.0
+        )
         intensity = np.abs(field) ** 2
         # Approximate 4-fold symmetry about center
         np.testing.assert_allclose(
@@ -65,30 +68,39 @@ class TestSquareLatticeVortex:
 
 class TestRingLatticeVortex:
     def test_peaks_on_ring(self):
-        field = ring_lattice_vortex((128, 128), n_sites=8, ring_radius=20.0, peak_sigma=2.0)
+        field = ring_lattice_vortex(
+            (128, 128), n_sites=8, ring_radius=20.0, peak_sigma=2.0
+        )
         intensity = np.abs(field) ** 2
         # Maximum should be near the ring, not at center
-        cy, cx = 63.5, 63.5
         center_val = intensity[64, 64]
-        ring_val = intensity[int(cy + 20), 64]
+        ring_val = intensity[83, 64]  # 63.5 + 20 ≈ 83
         assert ring_val > center_val
 
     def test_normalization(self):
-        field = ring_lattice_vortex((128, 128), n_sites=8, ring_radius=20.0, peak_sigma=2.0)
+        field = ring_lattice_vortex(
+            (128, 128), n_sites=8, ring_radius=20.0, peak_sigma=2.0
+        )
         np.testing.assert_allclose(np.sum(np.abs(field) ** 2), 1.0, atol=1e-10)
 
 
 class TestGrapheneLattice:
     def test_shape(self):
-        field = graphene_lattice((128, 128), rows=3, cols=3, spacing=8.0, peak_sigma=2.0)
+        field = graphene_lattice(
+            (128, 128), rows=3, cols=3, spacing=8.0, peak_sigma=2.0
+        )
         assert field.shape == (128, 128)
 
     def test_normalization(self):
-        field = graphene_lattice((128, 128), rows=3, cols=3, spacing=8.0, peak_sigma=2.0)
+        field = graphene_lattice(
+            (128, 128), rows=3, cols=3, spacing=8.0, peak_sigma=2.0
+        )
         np.testing.assert_allclose(np.sum(np.abs(field) ** 2), 1.0, atol=1e-10)
 
     def test_has_nonzero_content(self):
-        field = graphene_lattice((128, 128), rows=3, cols=3, spacing=8.0, peak_sigma=2.0)
+        field = graphene_lattice(
+            (128, 128), rows=3, cols=3, spacing=8.0, peak_sigma=2.0
+        )
         assert np.max(np.abs(field)) > 0
 
 
@@ -119,15 +131,15 @@ class TestGaussianLinePhaseGradient:
 class TestLgModeCenter:
     def test_default_center(self):
         """Without center param, should be centered on grid."""
-        field = lg_mode((64, 64), l=1, p=0, w0=10.0)
+        field = lg_mode((64, 64), ell=1, p=0, w0=10.0)
         intensity = np.abs(field) ** 2
         # Ring should be centered
         assert intensity[0, 0] < np.max(intensity) * 0.01
 
     def test_custom_center(self):
         """With center param, pattern should shift."""
-        field_default = lg_mode((128, 128), l=1, p=0, w0=10.0)
-        field_shifted = lg_mode((128, 128), l=1, p=0, w0=10.0, center=(80.0, 80.0))
+        field_default = lg_mode((128, 128), ell=1, p=0, w0=10.0)
+        field_shifted = lg_mode((128, 128), ell=1, p=0, w0=10.0, center=(80.0, 80.0))
         # Peak should be at different location
         peak_default = np.unravel_index(
             np.argmax(np.abs(field_default) ** 2), (128, 128)
