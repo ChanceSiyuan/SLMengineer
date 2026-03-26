@@ -91,3 +91,102 @@ def test_cgm_convergence_stagnation():
     result = cgm(input_amp, target, region, config)
     # Should have stopped before max_iterations due to convergence
     assert result.n_iterations <= 500
+
+
+def test_cgm_gradient_with_efficiency_weight():
+    """Verify efficiency-penalty gradient matches finite difference."""
+    shape = (32, 32)
+    input_amp = gaussian_beam(shape, sigma=8.0, normalize=False)
+    target = top_hat(shape, radius=5.0)
+    region = measure_region(shape, target, margin=2)
+    steepness = 4
+    ew = 1.0
+
+    phi = _initial_phase(shape, CGMConfig(steepness=steepness))
+    E_in = input_amp * np.exp(1j * phi)
+    E_out = fft_propagate(E_in)
+    grad = _cost_gradient(E_in, E_out, target, region, steepness, ew)
+
+    eps = 1e-5
+    rng = np.random.default_rng(99)
+    for _ in range(5):
+        i, j = rng.integers(0, shape[0]), rng.integers(0, shape[1])
+        phi_p, phi_m = phi.copy(), phi.copy()
+        phi_p[i, j] += eps
+        phi_m[i, j] -= eps
+        c_p = _cost_function(
+            fft_propagate(input_amp * np.exp(1j * phi_p)),
+            target, region, steepness, ew,
+        )
+        c_m = _cost_function(
+            fft_propagate(input_amp * np.exp(1j * phi_m)),
+            target, region, steepness, ew,
+        )
+        fd = (c_p - c_m) / (2 * eps)
+        np.testing.assert_allclose(grad[i, j], fd, rtol=0.1, atol=1e-3)
+
+
+def test_cgm_efficiency_weight_improves_efficiency():
+    """Efficiency penalty should produce higher efficiency than without."""
+    shape = (64, 64)
+    input_amp = gaussian_beam(shape, sigma=15.0, normalize=False)
+    target = top_hat(shape, radius=8.0)
+    region = measure_region(shape, target, margin=3)
+
+    result_no_w = cgm(
+        input_amp, target, region,
+        CGMConfig(max_iterations=80, steepness=6, R=3e-3, efficiency_weight=0.0),
+    )
+    result_w = cgm(
+        input_amp, target, region,
+        CGMConfig(max_iterations=80, steepness=6, R=3e-3, efficiency_weight=1.0),
+    )
+    assert result_w.final_efficiency > result_no_w.final_efficiency
+
+
+def test_cgm_gradient_with_eta_min():
+    """Verify threshold-penalty gradient matches finite difference."""
+    shape = (32, 32)
+    input_amp = gaussian_beam(shape, sigma=8.0, normalize=False)
+    target = top_hat(shape, radius=5.0)
+    region = measure_region(shape, target, margin=2)
+    steepness = 4
+    # Use a high eta_min so the penalty is active at the initial phase
+    eta_min_val = 0.99
+
+    phi = _initial_phase(shape, CGMConfig(steepness=steepness))
+    E_in = input_amp * np.exp(1j * phi)
+    E_out = fft_propagate(E_in)
+    grad = _cost_gradient(E_in, E_out, target, region, steepness, 0.0, eta_min_val)
+
+    eps = 1e-5
+    rng = np.random.default_rng(77)
+    for _ in range(5):
+        i, j = rng.integers(0, shape[0]), rng.integers(0, shape[1])
+        phi_p, phi_m = phi.copy(), phi.copy()
+        phi_p[i, j] += eps
+        phi_m[i, j] -= eps
+        c_p = _cost_function(
+            fft_propagate(input_amp * np.exp(1j * phi_p)),
+            target, region, steepness, 0.0, eta_min_val,
+        )
+        c_m = _cost_function(
+            fft_propagate(input_amp * np.exp(1j * phi_m)),
+            target, region, steepness, 0.0, eta_min_val,
+        )
+        fd = (c_p - c_m) / (2 * eps)
+        np.testing.assert_allclose(grad[i, j], fd, rtol=0.1, atol=1e-3)
+
+
+def test_cgm_eta_min_maintains_efficiency():
+    """eta_min floor should prevent efficiency from dropping too low."""
+    shape = (64, 64)
+    input_amp = gaussian_beam(shape, sigma=15.0, normalize=False)
+    target = top_hat(shape, radius=8.0)
+    region = measure_region(shape, target, margin=3)
+
+    result = cgm(
+        input_amp, target, region,
+        CGMConfig(max_iterations=80, steepness=6, R=3e-3, eta_min=0.3),
+    )
+    assert result.final_efficiency > 0.2

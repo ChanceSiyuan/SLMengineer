@@ -108,10 +108,12 @@ def phase_error(
     else:
         W = np.ones_like(phi_out) / len(phi_out)
 
+    # use $\sum e^{i\Delta \phi}$ to find the best global phase offset
     P = np.angle(np.sum(W * np.exp(1j * diff)))
     residual = np.angle(np.exp(1j * (diff - P)))
 
     denom = np.sum(W * phi_tgt**2)
+    # if the denominator is too small, set it to pi^2 to avoid division by zero
     if denom < 1e-12:
         denom = np.pi**2
     return float(np.sum(W * residual**2) / denom)

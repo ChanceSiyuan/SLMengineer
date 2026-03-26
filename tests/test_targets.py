@@ -6,6 +6,7 @@ from slm.targets import (
     gaussian_line,
     hexagonal_grid,
     lg_mode,
+    light_sheet,
     mask_from_target,
     measure_region,
     rectangular_grid,
@@ -85,6 +86,46 @@ def test_lg_mode_phase_winding():
 def test_lg_mode_normalization():
     field = lg_mode((64, 64), ell=1, p=0, w0=10.0)
     np.testing.assert_allclose(np.sum(np.abs(field) ** 2), 1.0, atol=1e-10)
+
+
+def test_light_sheet_normalization():
+    field = light_sheet((64, 64), flat_width=20.0, gaussian_sigma=5.0)
+    np.testing.assert_allclose(np.sum(np.abs(field) ** 2), 1.0, atol=1e-10)
+
+
+def test_light_sheet_flat_region():
+    shape = (128, 128)
+    field = light_sheet(shape, flat_width=40.0, gaussian_sigma=8.0)
+    amp = np.abs(field)
+    cy, cx = 63.5, 63.5
+    # Sample amplitude along the center row (the flat direction)
+    center_row = int(cy)
+    flat_half = 20  # flat_width/2
+    col_center = int(cx)
+    flat_vals = amp[center_row, col_center - flat_half + 2 : col_center + flat_half - 2]
+    # Amplitude should be uniform in the flat region
+    np.testing.assert_allclose(flat_vals, flat_vals[0], rtol=1e-10)
+
+
+def test_light_sheet_phase_flat():
+    field = light_sheet((64, 64), flat_width=20.0, gaussian_sigma=5.0)
+    mask = np.abs(field) > 1e-10
+    phases = np.angle(field[mask])
+    # All phases should be zero (flat phase)
+    np.testing.assert_allclose(phases, 0.0, atol=1e-10)
+
+
+def test_light_sheet_soft_edge():
+    shape = (128, 128)
+    hard = light_sheet(shape, flat_width=40.0, gaussian_sigma=8.0, edge_sigma=0.0)
+    soft = light_sheet(shape, flat_width=40.0, gaussian_sigma=8.0, edge_sigma=5.0)
+    # Soft version should have nonzero amplitude beyond the hard cutoff
+    hard_amp = np.abs(hard)
+    soft_amp = np.abs(soft)
+    # At a point beyond the flat region, soft should be larger
+    cy = shape[0] // 2
+    edge_col = shape[1] // 2 + 25  # beyond flat_width/2 = 20
+    assert soft_amp[cy, edge_col] > hard_amp[cy, edge_col]
 
 
 def test_mask_from_target_binary(small_grid):

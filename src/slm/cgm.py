@@ -24,6 +24,8 @@ class CGMConfig:
     D: float = -np.pi / 2  # linear phase offset magnitude
     theta: float = np.pi / 4  # linear phase angle (diagonal offset)
     track_fidelity: bool = False  # record fidelity each iteration (slower)
+    efficiency_weight: float = 0.0  # weight for (1-η)^2 efficiency penalty
+    eta_min: float = 0.0  # minimum efficiency floor; penalty when η < eta_min
 
 
 @dataclass
@@ -82,10 +84,26 @@ def _cost_function(
     target_field: np.ndarray,
     measure_region: np.ndarray,
     steepness: int,
+    efficiency_weight: float = 0.0,
+    eta_min: float = 0.0,
 ) -> float:
-    """Compute C = 10^d * (1 - Re{overlap})^2."""
+    """Compute C = 10^d * ((1 - Re{overlap})^2 + penalty).
+
+    The penalty term is either a continuous (1-η)^2 weighted by
+    *efficiency_weight*, a threshold max(0, eta_min - η)^2, or both.
+    """
     overlap = _compute_overlap(output_field, target_field, measure_region)
-    return float(10**steepness * (1.0 - np.real(overlap)) ** 2)
+    cost = 10**steepness * (1.0 - np.real(overlap)) ** 2
+    if efficiency_weight > 0 or eta_min > 0:
+        intensity = np.abs(output_field) ** 2
+        P_total = np.sum(intensity)
+        if P_total > 0:
+            eta = np.sum(intensity * measure_region) / P_total
+            if efficiency_weight > 0:
+                cost += efficiency_weight * 10**steepness * (1.0 - eta) ** 2
+            if eta_min > 0 and eta < eta_min:
+                cost += 10**steepness * (eta_min - eta) ** 2
+    return float(cost)
 
 
 def _cost_gradient(
@@ -94,6 +112,8 @@ def _cost_gradient(
     target_field: np.ndarray,
     measure_region: np.ndarray,
     steepness: int,
+    efficiency_weight: float = 0.0,
+    eta_min: float = 0.0,
 ) -> np.ndarray:
     """Compute dC/d(phi_{p,q}) analytically.
 
@@ -116,17 +136,30 @@ def _cost_gradient(
     back_A = ifft_propagate(A)
     back_B = ifft_propagate(B)
 
-    # d Re{r} / dphi (gradient of unnormalized inner product)
     d_Re_r = np.real(1j * E_in * np.conj(back_A))
+    raw_B = np.real(1j * E_in * np.conj(back_B))  # shared by d_norm_B and d_eta
+    d_norm_B = raw_B / norm_B
 
-    # d ||B|| / dphi (gradient of output norm)
-    d_norm_B = np.real(1j * E_in * np.conj(back_B)) / norm_B
-
-    # d overlap_real / dphi (quotient rule)
     d_overlap = d_Re_r / (norm_A * norm_B) - overlap_real * d_norm_B / norm_B
-
-    # d C / dphi
     grad = -2.0 * 10**steepness * (1.0 - overlap_real) * d_overlap
+
+    if efficiency_weight > 0 or eta_min > 0:
+        P_total = np.sum(np.abs(E_out) ** 2)
+        if P_total > 0:
+            eta = float(norm_B**2 / P_total)
+            d_eta = 2.0 * raw_B / P_total
+            if efficiency_weight > 0:
+                grad += (
+                    -2.0
+                    * efficiency_weight
+                    * 10**steepness
+                    * (1.0 - eta)
+                    * d_eta
+                )
+            if eta_min > 0 and eta < eta_min:
+                grad += (
+                    -2.0 * 10**steepness * (eta_min - eta) * d_eta
+                )
 
     return grad
 
@@ -137,12 +170,18 @@ def _eval_cost_and_grad(
     target_field: np.ndarray,
     measure_region: np.ndarray,
     steepness: int,
+    efficiency_weight: float = 0.0,
+    eta_min: float = 0.0,
 ) -> tuple[float, np.ndarray, np.ndarray]:
     """Evaluate cost and gradient. Returns (cost, gradient, E_out)."""
     E_in = input_amplitude * np.exp(1j * phi)
     E_out = fft_propagate(E_in)
-    cost = _cost_function(E_out, target_field, measure_region, steepness)
-    grad = _cost_gradient(E_in, E_out, target_field, measure_region, steepness)
+    cost = _cost_function(
+        E_out, target_field, measure_region, steepness, efficiency_weight, eta_min,
+    )
+    grad = _cost_gradient(
+        E_in, E_out, target_field, measure_region, steepness, efficiency_weight, eta_min,
+    )
     return cost, grad, E_out
 
 
@@ -154,6 +193,8 @@ def _line_search(
     target_field: np.ndarray,
     measure_region: np.ndarray,
     steepness: int,
+    efficiency_weight: float = 0.0,
+    eta_min: float = 0.0,
 ) -> float:
     """Geometric probing + bounded refinement line search."""
 
@@ -161,7 +202,10 @@ def _line_search(
         trial_phi = phi + alpha * direction
         E_in = input_amplitude * np.exp(1j * trial_phi)
         E_out = fft_propagate(E_in)
-        return _cost_function(E_out, target_field, measure_region, steepness)
+        return _cost_function(
+            E_out, target_field, measure_region, steepness,
+            efficiency_weight, eta_min,
+        )
 
     # Probe at geometrically spaced alphas to cover many orders of magnitude.
     # Cap alpha so max pixel phase change is bounded (prevents large power
@@ -201,6 +245,50 @@ def _line_search(
     return float(res.x)
 
 
+def _align_initial_phase(
+    phi: np.ndarray,
+    input_amplitude: np.ndarray,
+    target_field: np.ndarray,
+    measure_region: np.ndarray,
+) -> np.ndarray:
+    """Rotate initial phase so Re{overlap} = |overlap| (positive real)."""
+    E_tmp = fft_propagate(input_amplitude * np.exp(1j * phi))
+    init_overlap = _compute_overlap(E_tmp, target_field, measure_region)
+    if abs(init_overlap) > 1e-10:
+        phi = phi - np.angle(init_overlap)
+    return phi
+
+
+def _build_result(
+    phi: np.ndarray,
+    E_out: np.ndarray,
+    target_field: np.ndarray,
+    measure_region: np.ndarray,
+    cost_history: list[float],
+    n_iterations: int,
+    fidelity_history: list[float] | None = None,
+) -> CGMResult:
+    """Compute final metrics and return CGMResult."""
+    target_mask = mask_from_target(target_field)
+    target_intensity = np.abs(target_field) ** 2
+    return CGMResult(
+        slm_phase=phi,
+        output_field=E_out,
+        cost_history=cost_history,
+        final_fidelity=fidelity(E_out, target_field, measure_region),
+        final_efficiency=efficiency(E_out, measure_region),
+        final_phase_error=phase_error(
+            np.angle(E_out), np.angle(target_field), target_mask,
+            weights=target_intensity,
+        ),
+        final_non_uniformity=non_uniformity_error(
+            np.abs(E_out) ** 2, target_intensity, target_mask,
+        ),
+        n_iterations=n_iterations,
+        fidelity_history=fidelity_history or [],
+    )
+
+
 def cgm(
     input_amplitude: np.ndarray,
     target_field: np.ndarray,
@@ -224,12 +312,17 @@ def cgm(
     shape = input_amplitude.shape
     phi = _initial_phase(shape, config)
 
+    phi = _align_initial_phase(phi, input_amplitude, target_field, measure_region)
+
     cost_history: list[float] = []
     fidelity_history: list[float] = []
 
+    ew = config.efficiency_weight
+    em = config.eta_min
+
     # Initial forward pass
     cost, grad, E_out = _eval_cost_and_grad(
-        phi, input_amplitude, target_field, measure_region, config.steepness,
+        phi, input_amplitude, target_field, measure_region, config.steepness, ew, em,
     )
     cost_history.append(cost)
     if config.track_fidelity:
@@ -244,14 +337,14 @@ def cgm(
         # Line search along conjugate direction
         alpha = _line_search(
             phi, direction, cost,
-            input_amplitude, target_field, measure_region, config.steepness,
+            input_amplitude, target_field, measure_region, config.steepness, ew, em,
         )
         if alpha == 0.0:
             # Line search failed; reset to steepest descent
             direction = -grad
             alpha = _line_search(
                 phi, direction, cost,
-                input_amplitude, target_field, measure_region, config.steepness,
+                input_amplitude, target_field, measure_region, config.steepness, ew, em,
             )
             if alpha == 0.0:
                 break
@@ -260,7 +353,7 @@ def cgm(
 
         # Recompute cost and gradient at new point
         new_cost, new_grad, E_out = _eval_cost_and_grad(
-            phi, input_amplitude, target_field, measure_region, config.steepness,
+            phi, input_amplitude, target_field, measure_region, config.steepness, ew, em,
         )
         cost_history.append(new_cost)
         if config.track_fidelity:
@@ -288,27 +381,7 @@ def cgm(
         grad = new_grad
         grad_norm_sq = new_grad_norm_sq
 
-    # Compute final metrics
-    target_mask = mask_from_target(target_field)
-    target_intensity = np.abs(target_field) ** 2
-    final_fid = fidelity(E_out, target_field, measure_region)
-    final_eff = efficiency(E_out, measure_region)
-    final_pe = phase_error(
-        np.angle(E_out), np.angle(target_field), target_mask,
-        weights=target_intensity,
-    )
-    final_nu = non_uniformity_error(
-        np.abs(E_out) ** 2, target_intensity, target_mask,
-    )
-
-    return CGMResult(
-        slm_phase=phi,
-        output_field=E_out,
-        cost_history=cost_history,
-        final_fidelity=final_fid,
-        final_efficiency=final_eff,
-        final_phase_error=final_pe,
-        final_non_uniformity=final_nu,
-        n_iterations=n_iters,
-        fidelity_history=fidelity_history,
+    return _build_result(
+        phi, E_out, target_field, measure_region,
+        cost_history, n_iters, fidelity_history,
     )

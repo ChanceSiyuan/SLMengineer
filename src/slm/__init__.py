@@ -12,6 +12,7 @@ from slm.targets import (
     graphene_lattice,
     hexagonal_grid,
     lg_mode,
+    light_sheet,
     mask_from_target,
     measure_region,
     rectangular_grid,
@@ -31,6 +32,12 @@ from slm.metrics import (
 from slm.gs import gs, GSResult
 from slm.wgs import wgs, phase_fixed_wgs, WGSConfig, WGSResult
 from slm.cgm import cgm, CGMConfig, CGMResult
+
+try:
+    from slm.cgm_jax import cgm_jax
+except ImportError:
+    pass
+
 from slm.feedback import adaptive_feedback_loop, FeedbackConfig
 from slm.transforms import (
     apply_zernike_correction,
@@ -58,6 +65,7 @@ __all__ = [
     "graphene_lattice",
     "hexagonal_grid",
     "lg_mode",
+    "light_sheet",
     "mask_from_target",
     "measure_region",
     "plot_target_field",

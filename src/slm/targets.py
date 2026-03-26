@@ -139,6 +139,60 @@ def gaussian_line(
     return target
 
 
+def light_sheet(
+    shape: tuple[int, int],
+    flat_width: float,
+    gaussian_sigma: float,
+    angle: float = 0.0,
+    center: tuple[float, float] | None = None,
+    edge_sigma: float = 0.0,
+) -> np.ndarray:
+    """1D top-hat (light sheet): flat along one axis, Gaussian perpendicular.
+
+    Produces the target field for Rydberg beam shaping: uniform amplitude
+    for *flat_width* pixels along the line direction, Gaussian roll-off
+    with *gaussian_sigma* perpendicular.  Phase is flat (zero).
+    Normalized to unit power: sum(|field|^2) = 1.
+
+    Parameters
+    ----------
+    shape : (ny, nx) output grid.
+    flat_width : full width of the uniform region (pixels).
+    gaussian_sigma : 1/e^2 Gaussian width perpendicular to line (pixels).
+    angle : rotation angle in radians (0 = horizontal).
+    center : pattern center (row, col); defaults to grid center.
+    edge_sigma : if > 0, apply Gaussian taper at ends of the flat region
+        instead of a hard cutoff.  The taper has this 1/e^2 width.
+    """
+    ny, nx = shape
+    if center is None:
+        center = ((ny - 1) / 2.0, (nx - 1) / 2.0)
+    y = np.arange(ny) - center[0]
+    x = np.arange(nx) - center[1]
+    yy, xx = np.meshgrid(y, x, indexing="ij")
+    cos_a, sin_a = np.cos(angle), np.sin(angle)
+    u = xx * cos_a + yy * sin_a  # along line
+    v = -xx * sin_a + yy * cos_a  # perpendicular
+
+    # Perpendicular Gaussian envelope
+    perp = np.exp(-(v**2) / (2.0 * gaussian_sigma**2))
+
+    # Along-line profile: flat within flat_width, optional soft taper
+    half = flat_width / 2.0
+    if edge_sigma > 0:
+        # Smooth taper: 1 inside flat region, Gaussian roll-off outside
+        dist_outside = np.maximum(0.0, np.abs(u) - half)
+        along = np.exp(-(dist_outside**2) / (2.0 * edge_sigma**2))
+    else:
+        along = (np.abs(u) <= half).astype(np.float64)
+
+    field = (along * perp).astype(np.complex128)
+    power = np.sum(np.abs(field) ** 2)
+    if power > 0:
+        field /= np.sqrt(power)
+    return field
+
+
 def lg_mode(
     shape: tuple[int, int],
     ell: int,
