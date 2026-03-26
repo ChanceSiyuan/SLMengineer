@@ -51,3 +51,25 @@ def test_initial_slm_field_random_phase(rng):
     f2 = initial_slm_field((32, 32), sigma=5.0, rng=np.random.default_rng(2))
     # Different seeds -> different phases
     assert not np.allclose(np.angle(f1), np.angle(f2))
+
+
+def test_from_camera_intensity_normalization():
+    from slm.beams import from_camera_intensity
+
+    image = np.random.default_rng(0).uniform(0, 255, (32, 32))
+    amp = from_camera_intensity(image, normalize=True)
+    np.testing.assert_allclose(np.sum(amp**2), 1.0, atol=1e-10)
+
+
+def test_from_camera_intensity_sqrt():
+    from slm.beams import from_camera_intensity
+
+    # Float input is treated as-is (not rescaled)
+    image = np.array([[0.04, 0.09], [0.16, 0.25]])
+    amp = from_camera_intensity(image, normalize=False)
+    np.testing.assert_allclose(amp, np.sqrt(image))
+
+    # Integer input is rescaled by dtype max
+    image_u8 = np.array([[0, 128, 255]], dtype=np.uint8)
+    amp_u8 = from_camera_intensity(image_u8, normalize=False)
+    np.testing.assert_allclose(amp_u8, np.sqrt(image_u8.astype(float) / 255.0))

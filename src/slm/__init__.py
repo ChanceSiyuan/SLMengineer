@@ -3,7 +3,13 @@
 __version__ = "0.1.0"
 
 from slm.propagation import fft_propagate, ifft_propagate, pad_field
-from slm.beams import gaussian_beam, initial_slm_field, random_phase, uniform_beam
+from slm.beams import (
+    from_camera_intensity,
+    gaussian_beam,
+    initial_slm_field,
+    random_phase,
+    uniform_beam,
+)
 from slm.targets import (
     chicken_egg_pattern,
     disordered_array,
@@ -32,18 +38,27 @@ from slm.metrics import (
 from slm.gs import gs, GSResult
 from slm.wgs import wgs, phase_fixed_wgs, WGSConfig, WGSResult
 from slm.cgm import cgm, CGMConfig, CGMResult
+from slm.device import SLMDevice
 
 try:
     from slm.cgm_jax import cgm_jax
 except ImportError:
     pass
 
-from slm.feedback import adaptive_feedback_loop, FeedbackConfig
+from slm.camera import CameraInterface, SimulatedCamera, takeda_phase_retrieval
+from slm.feedback import (
+    adaptive_feedback_continuous,
+    adaptive_feedback_loop,
+    experimental_feedback_loop,
+    FeedbackConfig,
+)
 from slm.transforms import (
+    apply_measured_correction,
     apply_zernike_correction,
     anti_aliased_affine_transform,
     generate_aberration,
     zernike,
+    zernike_decompose,
     zernike_from_noll,
 )
 

@@ -41,9 +41,9 @@ from slm.targets import (
 # ============================================================================
 # SLM hardware constants — change these to match your setup
 # ============================================================================
-PIXEL_PITCH_MM = 0.024  # SLM pixel pitch (mm). 24 um for BNS P1920.
-N_SLM = 256             # SLM resolution (one side, square).
-N_PAD = 512             # Zero-padded output grid (>= N_SLM for resolution).
+PIXEL_PITCH_MM = 0.0125  # SLM pixel pitch (mm). 24 um for BNS P1920.
+N_SLM = 1024            # SLM resolution (one side, square).
+N_PAD = 2048            # Zero-padded output grid (>= N_SLM for resolution).
 
 # ============================================================================
 # Pattern configuration blocks

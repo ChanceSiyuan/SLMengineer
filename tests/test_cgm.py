@@ -190,3 +190,19 @@ def test_cgm_eta_min_maintains_efficiency():
         CGMConfig(max_iterations=80, steepness=6, R=3e-3, eta_min=0.3),
     )
     assert result.final_efficiency > 0.2
+
+
+def test_cgm_initial_phase_override():
+    """Custom initial_phase should be used instead of analytical formula."""
+    shape = (64, 64)
+    input_amp = gaussian_beam(shape, sigma=15.0, normalize=False)
+    target = top_hat(shape, radius=8.0)
+    region = measure_region(shape, target, margin=3)
+
+    custom_phase = np.zeros(shape)
+    config = CGMConfig(
+        max_iterations=10, steepness=6, R=3e-3, initial_phase=custom_phase,
+    )
+    result = cgm(input_amp, target, region, config)
+    assert result.n_iterations > 0
+    assert result.final_fidelity > 0

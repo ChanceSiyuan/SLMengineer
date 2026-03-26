@@ -1,4 +1,8 @@
-"""Simulated adaptive camera feedback for hologram correction (Kim et al.)."""
+"""Adaptive camera feedback for hologram correction.
+
+Includes both discrete-spot feedback (Kim et al.) and continuous-pattern
+feedback for top-hat / light-sheet targets.
+"""
 
 from __future__ import annotations
 
@@ -129,5 +133,144 @@ def adaptive_feedback_loop(
 
         # Use previous result as starting phase for next iteration
         current_field = slm_amp * np.exp(1j * result.slm_phase)
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Continuous-pattern feedback (top-hat, light sheet, etc.)
+# ---------------------------------------------------------------------------
+
+
+def simulate_continuous_measurement(
+    focal_field: np.ndarray,
+    region_mask: np.ndarray,
+    noise_level: float = 0.02,
+    rng: np.random.Generator | None = None,
+) -> np.ndarray:
+    """Simulate a noisy camera measurement of a continuous focal-plane field.
+
+    Returns the full (ny, nx) measured intensity with Gaussian noise.
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+    intensity = np.abs(focal_field) ** 2
+    mean_signal = np.mean(intensity[region_mask > 0]) if np.any(region_mask > 0) else 1.0
+    noise = rng.normal(0, noise_level * mean_signal, size=intensity.shape)
+    return np.maximum(intensity + noise, 0.0)
+
+
+def adjust_target_continuous(
+    target: np.ndarray,
+    measured_intensity: np.ndarray,
+    region_mask: np.ndarray,
+) -> np.ndarray:
+    """Adjust target amplitude using measured continuous intensity field.
+
+    Scales the target amplitude so under-illuminated regions get more
+    weight and over-illuminated regions get less, within the measure region.
+    """
+    new_target = target.copy()
+    mask = region_mask > 0
+    if not np.any(mask):
+        return new_target
+
+    I_meas = np.maximum(measured_intensity[mask], 1e-30)
+    I_mean = np.mean(I_meas)
+    correction = np.sqrt(np.clip(I_mean / I_meas, 0.1, 10.0))
+    new_target[mask] *= correction
+    return new_target
+
+
+def adaptive_feedback_continuous(
+    input_amplitude: np.ndarray,
+    target_field: np.ndarray,
+    measure_region: np.ndarray,
+    n_steps: int = 5,
+    max_iter: int = 100,
+    noise_level: float = 0.02,
+    rng: np.random.Generator | None = None,
+) -> list:
+    """Closed-loop feedback for continuous targets using a simulated camera.
+
+    Convenience wrapper around :func:`experimental_feedback_loop` that
+    constructs a :class:`~slm.camera.SimulatedCamera` internally.
+    """
+    from slm.camera import SimulatedCamera
+
+    camera = SimulatedCamera(
+        input_amplitude, noise_level=noise_level, rng=rng,
+    )
+    return experimental_feedback_loop(
+        input_amplitude, target_field, measure_region, camera,
+        n_steps=n_steps, max_iter=max_iter,
+    )
+
+
+def experimental_feedback_loop(
+    input_amplitude: np.ndarray,
+    target_field: np.ndarray,
+    measure_region: np.ndarray,
+    camera,
+    n_steps: int = 5,
+    max_iter: int = 100,
+    measure_phase: bool = False,
+    cgm_config: "CGMConfig | None" = None,
+) -> list:
+    """Closed-loop feedback using a camera (real or simulated).
+
+    Each step:
+      1. Run CGM to produce a hologram
+      2. Display hologram -> camera captures intensity (and optionally fringes)
+      3. Adjust target based on measured intensity
+      4. Optionally apply phase correction from fringe analysis
+      5. Warm-start next CGM from previous hologram
+
+    Parameters
+    ----------
+    camera : object with ``capture_intensity(slm_phase)`` and optionally
+        ``capture_fringes(slm_phase)`` methods (see CameraInterface protocol).
+    measure_phase : if True, also capture fringes and extract phase via Takeda.
+    cgm_config : base CGMConfig for each step (max_iterations is overridden
+        by *max_iter*).  If None, a default config with eta_min=0.05 is used.
+    """
+    from slm.cgm import CGMConfig, cgm
+
+    results = []
+    current_target = target_field.copy()
+    prev_phase = None
+
+    for _step in range(n_steps):
+        if cgm_config is not None:
+            config = CGMConfig(**{
+                k: v for k, v in cgm_config.__dict__.items()
+                if k != "initial_phase"
+            })
+        else:
+            config = CGMConfig(eta_min=0.05)
+        config.max_iterations = max_iter
+        if prev_phase is not None:
+            config.initial_phase = prev_phase
+
+        result = cgm(input_amplitude, current_target, measure_region, config)
+        results.append(result)
+
+        measured_I = camera.capture_intensity(result.slm_phase)
+        current_target = adjust_target_continuous(
+            current_target, measured_I, measure_region,
+        )
+
+        if measure_phase and hasattr(camera, "capture_fringes"):
+            from slm.camera import takeda_phase_retrieval
+
+            fringes = camera.capture_fringes(result.slm_phase)
+            measured_phase = takeda_phase_retrieval(fringes)
+            target_phase = np.angle(target_field)
+            mask = measure_region > 0
+            phase_correction = np.zeros_like(result.slm_phase)
+            phase_correction[mask] = target_phase[mask] - measured_phase[mask]
+            prev_phase = result.slm_phase + phase_correction
+        else:
+            prev_phase = result.slm_phase
 
     return results

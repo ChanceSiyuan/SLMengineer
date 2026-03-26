@@ -71,3 +71,32 @@ def initial_slm_field(
     amp = gaussian_beam(shape, sigma, normalize=True)
     phasor = random_phase(shape, rng=rng)
     return amp * phasor
+
+
+def from_camera_intensity(
+    image: np.ndarray,
+    normalize: bool = True,
+) -> np.ndarray:
+    """Convert a camera intensity image to a beam amplitude array.
+
+    Parameters
+    ----------
+    image : (ny, nx) intensity array.  Values in [0, 255] (uint8) are
+        auto-scaled to [0, 1].
+    normalize : if True, normalize so sum(|amp|^2) = 1.
+
+    Returns
+    -------
+    Real-valued amplitude array (sqrt of intensity).
+    """
+    raw = np.asarray(image)
+    is_integer = np.issubdtype(raw.dtype, np.integer)
+    image = raw.astype(np.float64)
+    if is_integer:
+        image = image / max(float(np.iinfo(raw.dtype).max), 1.0)
+    amplitude = np.sqrt(np.maximum(image, 0.0))
+    if normalize:
+        power = np.sum(amplitude**2)
+        if power > 0:
+            amplitude /= np.sqrt(power)
+    return amplitude

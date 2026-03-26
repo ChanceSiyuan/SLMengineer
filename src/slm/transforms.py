@@ -167,3 +167,50 @@ def generate_aberration(
     for noll_j, coeff in coefficients.items():
         aberration += coeff * zernike_from_noll(noll_j, shape, radius)
     return aberration
+
+
+def zernike_decompose(
+    phase: np.ndarray,
+    n_terms: int = 15,
+    radius: float | None = None,
+) -> dict[int, float]:
+    """Decompose a phase map into Zernike coefficients via least squares.
+
+    Parameters
+    ----------
+    phase : (ny, nx) phase map in radians.
+    n_terms : number of Zernike terms (Noll j=1..n_terms).
+    radius : disk radius in pixels; defaults to min(ny, nx)/2.
+
+    Returns
+    -------
+    Dictionary mapping Noll index j to coefficient value.
+    """
+    shape = phase.shape
+    ny, nx = shape
+    if radius is None:
+        radius = min(ny, nx) / 2.0
+    cy, cx = (ny - 1) / 2.0, (nx - 1) / 2.0
+    y = (np.arange(ny) - cy) / radius
+    x = (np.arange(nx) - cx) / radius
+    yy, xx = np.meshgrid(y, x, indexing="ij")
+    rho = np.sqrt(xx**2 + yy**2)
+    mask = rho <= 1.0
+    n_pixels = int(np.sum(mask))
+
+    basis = np.zeros((n_pixels, n_terms))
+    for col, j in enumerate(range(1, n_terms + 1)):
+        Z = zernike_from_noll(j, shape, radius)
+        basis[:, col] = Z[mask]
+
+    phi_vec = phase[mask]
+    coeffs, _, _, _ = np.linalg.lstsq(basis, phi_vec, rcond=None)
+    return {j: float(coeffs[j - 1]) for j in range(1, n_terms + 1)}
+
+
+def apply_measured_correction(
+    hologram_phase: np.ndarray,
+    measured_aberration: np.ndarray,
+) -> np.ndarray:
+    """Subtract a measured wavefront error from a hologram phase."""
+    return hologram_phase - measured_aberration

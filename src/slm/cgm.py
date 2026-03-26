@@ -26,6 +26,7 @@ class CGMConfig:
     track_fidelity: bool = False  # record fidelity each iteration (slower)
     efficiency_weight: float = 0.0  # weight for (1-η)^2 efficiency penalty
     eta_min: float = 0.0  # minimum efficiency floor; penalty when η < eta_min
+    initial_phase: np.ndarray | None = None  # measured/custom phase; overrides analytical
 
 
 @dataclass
@@ -310,7 +311,10 @@ def cgm(
     callback : optional function called each iteration with (i, cost).
     """
     shape = input_amplitude.shape
-    phi = _initial_phase(shape, config)
+    if config.initial_phase is not None:
+        phi = config.initial_phase.copy()
+    else:
+        phi = _initial_phase(shape, config)
 
     phi = _align_initial_phase(phi, input_amplitude, target_field, measure_region)
 

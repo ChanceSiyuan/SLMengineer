@@ -61,3 +61,21 @@ def test_feedback_reduces_nonuniformity():
     first_uni = results[0].uniformity_history[-1]
     last_uni = results[-1].uniformity_history[-1]
     assert last_uni <= first_uni * 1.5  # should not degrade significantly
+
+
+def test_continuous_feedback_reduces_error():
+    from slm.beams import gaussian_beam
+    from slm.feedback import adaptive_feedback_continuous
+    from slm.targets import measure_region, top_hat
+
+    shape = (64, 64)
+    input_amp = gaussian_beam(shape, sigma=15.0, normalize=False)
+    target = top_hat(shape, radius=8.0)
+    region = measure_region(shape, target, margin=3)
+
+    results = adaptive_feedback_continuous(
+        input_amp, target, region,
+        n_steps=3, max_iter=30, noise_level=0.0,
+    )
+    assert len(results) == 3
+    assert results[-1].final_fidelity >= results[0].final_fidelity * 0.8

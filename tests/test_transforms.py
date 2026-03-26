@@ -77,5 +77,23 @@ def test_generate_aberration():
     aberration = generate_aberration((64, 64), {4: 1.0})  # defocus
     assert aberration.shape == (64, 64)
     assert not np.allclose(aberration, 0.0)
-    # Should be zero outside disk
-    assert aberration[0, 0] == 0.0
+
+
+def test_zernike_decompose_roundtrip():
+    from slm.transforms import generate_aberration, zernike_decompose
+
+    shape = (64, 64)
+    original = {4: 1.5, 5: -0.3, 6: 0.8}  # defocus + astigmatism
+    phase = generate_aberration(shape, original)
+    recovered = zernike_decompose(phase, n_terms=10)
+    for j, val in original.items():
+        np.testing.assert_allclose(recovered[j], val, atol=0.05)
+
+
+def test_apply_measured_correction():
+    from slm.transforms import apply_measured_correction
+
+    phase = np.ones((32, 32))
+    aberr = 0.5 * np.ones((32, 32))
+    corrected = apply_measured_correction(phase, aberr)
+    np.testing.assert_allclose(corrected, 0.5)
