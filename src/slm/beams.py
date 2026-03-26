@@ -30,7 +30,7 @@ def gaussian_beam(
     y = np.arange(ny) - center[0]
     x = np.arange(nx) - center[1]
     yy, xx = np.meshgrid(y, x, indexing="ij")
-    amp = np.exp(-(xx**2 + yy**2) / (2.0 * sigma**2))
+    amp = np.exp(-(xx**2 + yy**2) / (sigma**2))
     if normalize:
         power = np.sum(amp**2)
         if power > 0:

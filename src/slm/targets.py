@@ -424,8 +424,16 @@ def disordered_array(
     return target, positions
 
 
-def mask_from_target(target: np.ndarray, threshold: float = 1e-10) -> np.ndarray:
-    """Binary mask: 1 where |target| > threshold, 0 elsewhere."""
+def mask_from_target(
+    target: np.ndarray, threshold: float | None = None,
+) -> np.ndarray:
+    """Binary mask: 1 where |target| > threshold, 0 elsewhere.
+
+    Default threshold is 0.1% of peak amplitude.
+    """
+    if threshold is None:
+        max_amp = np.max(np.abs(target))
+        threshold = 1e-3 * max_amp if max_amp > 0 else 0.0
     return (np.abs(target) > threshold).astype(np.float64)
 
 
@@ -444,3 +452,89 @@ def measure_region(
     struct = np.ones((2 * margin + 1, 2 * margin + 1))
     dilated = binary_dilation(mask.astype(bool), structure=struct)
     return dilated.astype(np.float64)
+
+
+def _demo_target_gallery(
+    shape: tuple[int, int] = (256, 256),
+) -> dict[str, np.ndarray]:
+    """Build a small set of named targets for quick visualization."""
+    cy = (shape[0] - 1) / 2.0
+    cx = (shape[1] - 1) / 2.0
+    center = (cy, cx)
+    return {
+        "LG01": lg_mode(shape, ell=1, p=0, w0=10.0, center=center),
+        "top_hat": top_hat(shape, radius=25.0, center=center),
+        "gaussian_line": gaussian_line(
+            shape, length=30.0, width_sigma=5.0, phase_gradient=0.1, center=center
+        ),
+        "square_lattice_vortex": square_lattice_vortex(
+            shape, rows=8, cols=8, spacing=14.0, peak_sigma=3.0, ell=1, center=center
+        ),
+        "ring_lattice_vortex": ring_lattice_vortex(
+            shape, n_sites=12, ring_radius=25.0, peak_sigma=3.0, ell=1, center=center
+        ),
+        "graphene": graphene_lattice(
+            shape, rows=4, cols=4, spacing=8.0, peak_sigma=2.5, center=center
+        ),
+        "chicken_egg": chicken_egg_pattern(shape, radius=50.0, center=center),
+    }
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Plot intensity and phase for example target fields.",
+    )
+    parser.add_argument(
+        "--save",
+        metavar="PATH",
+        help="Save figure to this path (e.g. targets.png) instead of showing.",
+    )
+    parser.add_argument(
+        "--dpi",
+        type=int,
+        default=120,
+        help="Figure DPI when saving.",
+    )
+    parser.add_argument(
+        "--size",
+        type=int,
+        default=256,
+        help="Square grid size (ny = nx) for demo patterns.",
+    )
+    args = parser.parse_args()
+
+    import matplotlib.pyplot as plt
+
+    from slm.visualization import plot_target_field
+
+    n = max(32, args.size)
+    shape = (n, n)
+    gallery = _demo_target_gallery(shape)
+    n_pat = len(gallery)
+    fig, axes = plt.subplots(
+        n_pat,
+        2,
+        figsize=(10.0, 2.2 * n_pat),
+        constrained_layout=True,
+    )
+    if axes.ndim == 1:
+        axes = axes.reshape(1, -1)
+
+    for row, (name, field) in enumerate(gallery.items()):
+        plot_target_field(
+            field,
+            title=None,
+            fig=fig,
+            axes=(axes[row, 0], axes[row, 1]),
+            show_colorbar=True,
+        )
+        axes[row, 0].set_ylabel(f"{name}\ny", fontsize=9)
+
+    fig.suptitle("Target fields: intensity (left) and phase (right)", fontsize=12)
+
+    if args.save:
+        fig.savefig(args.save, dpi=args.dpi)
+    else:
+        plt.show()

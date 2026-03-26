@@ -81,10 +81,15 @@ def phase_error(
     output_phase: np.ndarray,
     target_phase: np.ndarray,
     region: np.ndarray,
+    weights: np.ndarray | None = None,
 ) -> float:
     """Relative phase error within measure region (Bowman et al.).
 
     Includes cyclic correction P to find the best global phase offset.
+    When *weights* (e.g. target intensity) are supplied the sums are
+    intensity-weighted so that dim pixels do not dominate the metric.
+    When the target phase is near-zero everywhere (e.g. flat-top beam)
+    the denominator falls back to sum(W)*pi^2 so the metric stays finite.
     """
     mask = region > 0
     if not np.any(mask):
@@ -94,14 +99,22 @@ def phase_error(
     phi_tgt = target_phase[mask]
     diff = phi_tgt - phi_out
 
-    # Find optimal global offset P to minimize error
-    P = np.angle(np.sum(np.exp(1j * diff)))
+    if weights is not None:
+        W = weights[mask]
+        W_sum = np.sum(W)
+        if W_sum == 0:
+            return 0.0
+        W = W / W_sum
+    else:
+        W = np.ones_like(phi_out) / len(phi_out)
+
+    P = np.angle(np.sum(W * np.exp(1j * diff)))
     residual = np.angle(np.exp(1j * (diff - P)))
 
-    denom = np.sum(phi_tgt**2)
-    if denom == 0:
-        return float(np.sum(residual**2))
-    return float(np.sum(residual**2) / denom)
+    denom = np.sum(W * phi_tgt**2)
+    if denom < 1e-12:
+        denom = np.pi**2
+    return float(np.sum(W * residual**2) / denom)
 
 
 def non_uniformity_error(
@@ -109,15 +122,18 @@ def non_uniformity_error(
     target_intensity: np.ndarray,
     uniform_mask: np.ndarray,
 ) -> float:
-    """Non-uniformity error for flat-intensity regions (Bowman et al.).
+    """Non-uniformity error (Bowman et al.).
 
-    epsilon_nu = sum(|M*(I_tilde - I_a)|^2) / sum(|M*T_tilde|^2)
+    Measures how well the output intensity matches the target shape after
+    optimal scaling.  The best-fit coefficient I_a = sum(Ĩ·T̃)/sum(T̃²)
+    projects the normalised output onto the target, and the residual gives:
+
+        epsilon_nu = sum(|Ĩ - I_a·T̃|²) / sum(T̃²)
     """
     mask = uniform_mask > 0
     if not np.any(mask):
         return 0.0
 
-    # Normalize intensities over the mask region
     I_sum = np.sum(output_intensity[mask])
     T_sum = np.sum(target_intensity[mask])
 
@@ -126,10 +142,11 @@ def non_uniformity_error(
 
     I_tilde = output_intensity[mask] / I_sum
     T_tilde = target_intensity[mask] / T_sum
-    I_a = np.mean(I_tilde)
 
-    numerator = np.sum((I_tilde - I_a) ** 2)
-    denominator = np.sum(T_tilde**2)
-    if denominator == 0:
+    T2 = np.sum(T_tilde**2)
+    if T2 == 0:
         return 0.0
-    return float(numerator / denominator)
+
+    I_a = np.sum(I_tilde * T_tilde) / T2
+    numerator = np.sum((I_tilde - I_a * T_tilde) ** 2)
+    return float(numerator / T2)

@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Literal
+
 import matplotlib.pyplot as plt
 import numpy as np
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
+    from matplotlib.figure import Figure
 
 
 def plot_phase(
@@ -124,3 +130,94 @@ def plot_hologram_summary(
 
     fig.tight_layout()
     return fig
+
+
+def plot_target_field(
+    target_field: np.ndarray,
+    *,
+    title: str | None = None,
+    figsize: tuple[float, float] = (10.0, 4.0),
+    intensity: Literal["power", "amplitude"] = "power",
+    intensity_cmap: str = "viridis",
+    phase_cmap: str = "twilight",
+    phase_mask_relative: float = 1e-3,
+    show_colorbar: bool = True,
+    fig: "Figure | None" = None,
+    axes: tuple["Axes", "Axes"] | None = None,
+) -> tuple["Figure", tuple["Axes", "Axes"]]:
+    """Plot 2D intensity and phase of a complex target field (color maps).
+
+    Phase is only shown where ``|E|`` exceeds ``phase_mask_relative * max(|E|)``
+    to avoid meaningless colors in dark regions.
+
+    Parameters
+    ----------
+    target_field : (ny, nx) complex array.
+    title : optional super title for the figure.
+    figsize : used when creating a new figure.
+    intensity : ``"power"`` for :math:`|E|^2`, ``"amplitude"`` for :math:`|E|`.
+    intensity_cmap, phase_cmap : matplotlib colormap names.
+    phase_mask_relative : mask phase below this fraction of peak amplitude.
+    show_colorbar : whether to draw colorbars.
+    fig, axes : if provided, draw on ``axes = (ax_intensity, ax_phase)``; else create.
+
+    Returns
+    -------
+    fig : matplotlib Figure.
+    (ax_intensity, ax_phase) : the two axes.
+    """
+    field = np.asarray(target_field, dtype=np.complex128)
+    ny, nx = field.shape
+    amp = np.abs(field)
+    peak = float(np.max(amp)) if amp.size else 0.0
+    thresh = phase_mask_relative * peak if peak > 0 else 0.0
+
+    if intensity == "power":
+        img_i = amp**2
+        i_label = r"$|E|^2$"
+    elif intensity == "amplitude":
+        img_i = amp
+        i_label = r"$|E|$"
+    else:
+        raise ValueError('intensity must be "power" or "amplitude"')
+
+    phase_full = np.angle(field)
+    phase_plot = np.ma.masked_where(amp <= thresh, phase_full)
+
+    if fig is None or axes is None:
+        fig, axes = plt.subplots(1, 2, figsize=figsize, constrained_layout=True)
+    ax_i, ax_p = axes
+
+    extent = (-0.5, nx - 0.5, -0.5, ny - 0.5)
+    im0 = ax_i.imshow(
+        img_i,
+        origin="lower",
+        extent=extent,
+        aspect="equal",
+        cmap=intensity_cmap,
+    )
+    ax_i.set_xlabel("x (pixel)")
+    ax_i.set_ylabel("y (pixel)")
+    ax_i.set_title(i_label)
+
+    im1 = ax_p.imshow(
+        phase_plot,
+        origin="lower",
+        extent=extent,
+        aspect="equal",
+        cmap=phase_cmap,
+        vmin=-np.pi,
+        vmax=np.pi,
+    )
+    ax_p.set_xlabel("x (pixel)")
+    ax_p.set_ylabel("y (pixel)")
+    ax_p.set_title(r"phase $\arg(E)$ (rad)")
+
+    if title is not None:
+        fig.suptitle(title)
+
+    if show_colorbar:
+        fig.colorbar(im0, ax=ax_i, fraction=0.046, pad=0.04)
+        fig.colorbar(im1, ax=ax_p, fraction=0.046, pad=0.04)
+
+    return fig, (ax_i, ax_p)

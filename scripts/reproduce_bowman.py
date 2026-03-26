@@ -317,7 +317,7 @@ def main():
     if not any([args.table1, args.figure2, args.figure3, args.all]):
         args.all = True
 
-    max_iter = 50 if args.fast else 200
+    max_iter = 50 if args.fast else 300
     grid_size = 4 if args.fast else 8
 
     if args.fast:

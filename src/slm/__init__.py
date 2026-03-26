@@ -20,6 +20,7 @@ from slm.targets import (
     square_lattice_vortex,
     top_hat,
 )
+from slm.visualization import plot_target_field
 from slm.metrics import (
     efficiency,
     fidelity,
@@ -59,6 +60,7 @@ __all__ = [
     "lg_mode",
     "mask_from_target",
     "measure_region",
+    "plot_target_field",
     "rectangular_grid",
     "ring_lattice_vortex",
     "spot_array",

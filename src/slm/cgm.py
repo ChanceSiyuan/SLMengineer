@@ -10,6 +10,7 @@ from scipy.optimize import minimize_scalar
 
 from slm.metrics import efficiency, fidelity, non_uniformity_error, phase_error
 from slm.propagation import fft_propagate, ifft_propagate
+from slm.targets import mask_from_target
 
 
 @dataclass
@@ -130,6 +131,76 @@ def _cost_gradient(
     return grad
 
 
+def _eval_cost_and_grad(
+    phi: np.ndarray,
+    input_amplitude: np.ndarray,
+    target_field: np.ndarray,
+    measure_region: np.ndarray,
+    steepness: int,
+) -> tuple[float, np.ndarray, np.ndarray]:
+    """Evaluate cost and gradient. Returns (cost, gradient, E_out)."""
+    E_in = input_amplitude * np.exp(1j * phi)
+    E_out = fft_propagate(E_in)
+    cost = _cost_function(E_out, target_field, measure_region, steepness)
+    grad = _cost_gradient(E_in, E_out, target_field, measure_region, steepness)
+    return cost, grad, E_out
+
+
+def _line_search(
+    phi: np.ndarray,
+    direction: np.ndarray,
+    cost0: float,
+    input_amplitude: np.ndarray,
+    target_field: np.ndarray,
+    measure_region: np.ndarray,
+    steepness: int,
+) -> float:
+    """Geometric probing + bounded refinement line search."""
+
+    def cost_at(alpha: float) -> float:
+        trial_phi = phi + alpha * direction
+        E_in = input_amplitude * np.exp(1j * trial_phi)
+        E_out = fft_propagate(E_in)
+        return _cost_function(E_out, target_field, measure_region, steepness)
+
+    # Probe at geometrically spaced alphas to cover many orders of magnitude.
+    # Cap alpha so max pixel phase change is bounded (prevents large power
+    # redistribution that the paper's CG avoids via conservative line search).
+    dir_max = np.max(np.abs(direction))
+    if dir_max == 0:
+        return 0.0
+    # Limit max phase change per pixel to ~pi/2
+    base = (np.pi / 2.0) / dir_max
+    probes = [base * f for f in [1e-3, 1e-2, 0.1, 0.3, 0.6, 1.0, 1.5, 2.0]]
+    probe_costs = [(a, cost_at(a)) for a in probes]
+    # Find best probe
+    best_alpha, best_cost = min(probe_costs, key=lambda x: x[1])
+
+    if best_cost >= cost0:
+        # No improvement at any probe; try tiny steps
+        tiny_probes = [base * f for f in [1e-5, 1e-4]]
+        for a in tiny_probes:
+            c = cost_at(a)
+            if c < cost0:
+                best_alpha, best_cost = a, c
+                probe_costs.append((a, c))
+                break
+        if best_cost >= cost0:
+            return 0.0
+
+    # Refine: bracket around best probe and its neighbors
+    all_probes = sorted([(0.0, cost0)] + probe_costs, key=lambda x: x[0])
+    idx = next(i for i, (a, _) in enumerate(all_probes) if a == best_alpha)
+    lo = all_probes[max(0, idx - 1)][0]
+    hi = all_probes[min(len(all_probes) - 1, idx + 1)][0]
+    if lo == hi:
+        return best_alpha
+
+    res = minimize_scalar(cost_at, bounds=(lo, hi), method="bounded",
+                          options={"xatol": (hi - lo) * 1e-4})
+    return float(res.x)
+
+
 def cgm(
     input_amplitude: np.ndarray,
     target_field: np.ndarray,
@@ -138,6 +209,9 @@ def cgm(
     callback: Callable[[int, float], None] | None = None,
 ) -> CGMResult:
     """Conjugate Gradient Minimization for continuous beam shaping.
+
+    Uses the Fletcher-Reeves conjugate gradient method with an adaptive
+    line search, following the algorithm in Bowman et al.
 
     Parameters
     ----------
@@ -149,107 +223,82 @@ def cgm(
     """
     shape = input_amplitude.shape
     phi = _initial_phase(shape, config)
-    cost_history = []
-    fidelity_history = []
 
-    prev_grad = None
-    prev_direction = None
-    restart_interval = max(shape[0] * shape[1] // 10, 50)
+    cost_history: list[float] = []
+    fidelity_history: list[float] = []
+
+    # Initial forward pass
+    cost, grad, E_out = _eval_cost_and_grad(
+        phi, input_amplitude, target_field, measure_region, config.steepness,
+    )
+    cost_history.append(cost)
+    if config.track_fidelity:
+        fidelity_history.append(fidelity(E_out, target_field, measure_region))
+
+    # First descent direction is steepest descent
+    direction = -grad
+    grad_norm_sq = np.sum(grad**2)
+    n_iters = 0
 
     for i in range(config.max_iterations):
-        # Compute output field
-        E_in = input_amplitude * np.exp(1j * phi)
-        E_out = fft_propagate(E_in)
+        # Line search along conjugate direction
+        alpha = _line_search(
+            phi, direction, cost,
+            input_amplitude, target_field, measure_region, config.steepness,
+        )
+        if alpha == 0.0:
+            # Line search failed; reset to steepest descent
+            direction = -grad
+            alpha = _line_search(
+                phi, direction, cost,
+                input_amplitude, target_field, measure_region, config.steepness,
+            )
+            if alpha == 0.0:
+                break
 
-        # Compute cost
-        cost = _cost_function(E_out, target_field, measure_region, config.steepness)
-        cost_history.append(cost)
+        phi = phi + alpha * direction
 
+        # Recompute cost and gradient at new point
+        new_cost, new_grad, E_out = _eval_cost_and_grad(
+            phi, input_amplitude, target_field, measure_region, config.steepness,
+        )
+        cost_history.append(new_cost)
         if config.track_fidelity:
-            fidelity_history.append(fidelity(E_out, target_field, measure_region))
+            fidelity_history.append(
+                fidelity(E_out, target_field, measure_region),
+            )
+        n_iters = i + 1
 
         if callback is not None:
-            callback(i, cost)
+            callback(i + 1, new_cost)
 
-        # Check convergence
-        if (
-            len(cost_history) > 1
-            and abs(cost_history[-1] - cost_history[-2]) < config.convergence_threshold
-        ):
+        # Check convergence (relative criterion)
+        if abs(cost - new_cost) < config.convergence_threshold * max(abs(new_cost), 1.0):
             break
 
-        grad = _cost_gradient(
-            E_in, E_out, target_field, measure_region, config.steepness
-        )
-
-        # Conjugate direction (Polak-Ribiere-Polyak with periodic restart)
-        if prev_grad is None or i % restart_interval == 0:
-            direction = -grad
+        # Fletcher-Reeves conjugate direction update with periodic restart
+        new_grad_norm_sq = np.sum(new_grad**2)
+        if grad_norm_sq > 0 and (i + 1) % 50 != 0:
+            beta = new_grad_norm_sq / grad_norm_sq
         else:
-            # PR+ formula: more robust than Fletcher-Reeves
-            diff = grad - prev_grad
-            prev_dot = np.sum(prev_grad * prev_grad)
-            if prev_dot > 0:
-                beta = max(0.0, np.sum(grad * diff) / prev_dot)
-            else:
-                beta = 0.0
-            direction = -grad + beta * prev_direction
+            beta = 0.0  # restart: steepest descent
+        direction = -new_grad + beta * direction
 
-        prev_grad = grad.copy()
-        prev_direction = direction.copy()
-
-        # Line search: find initial bracket then minimize
-        def line_cost(alpha):
-            phi_trial = phi + alpha * direction
-            E_trial = fft_propagate(input_amplitude * np.exp(1j * phi_trial))
-            return _cost_function(
-                E_trial, target_field, measure_region, config.steepness
-            )
-
-        # Adaptive bracket: start small and expand
-        c0 = cost
-        alpha_test = 1e-4
-        for _ in range(20):
-            c_test = line_cost(alpha_test)
-            if c_test < c0:
-                break
-            alpha_test *= 0.5
-        else:
-            alpha_test = 1e-6
-
-        result = minimize_scalar(
-            line_cost,
-            bounds=(0, alpha_test * 10),
-            method="bounded",
-            options={"xatol": alpha_test * 1e-3},
-        )
-        alpha_opt = result.x
-
-        if result.fun < cost:
-            phi = phi + alpha_opt * direction
-        else:
-            # Reset to steepest descent with small step
-            grad_norm = np.sqrt(np.sum(grad**2))
-            if grad_norm > 0:
-                phi = phi - (alpha_test * 0.1) * grad / grad_norm
-            prev_grad = None
-            prev_direction = None
-
-    # Final output
-    E_in = input_amplitude * np.exp(1j * phi)
-    E_out = fft_propagate(E_in)
+        cost = new_cost
+        grad = new_grad
+        grad_norm_sq = new_grad_norm_sq
 
     # Compute final metrics
-    target_mask = np.abs(target_field) > 0
+    target_mask = mask_from_target(target_field)
+    target_intensity = np.abs(target_field) ** 2
     final_fid = fidelity(E_out, target_field, measure_region)
     final_eff = efficiency(E_out, measure_region)
     final_pe = phase_error(
-        np.angle(E_out), np.angle(target_field), target_mask.astype(np.float64)
+        np.angle(E_out), np.angle(target_field), target_mask,
+        weights=target_intensity,
     )
     final_nu = non_uniformity_error(
-        np.abs(E_out) ** 2,
-        np.abs(target_field) ** 2,
-        target_mask.astype(np.float64),
+        np.abs(E_out) ** 2, target_intensity, target_mask,
     )
 
     return CGMResult(
@@ -260,6 +309,6 @@ def cgm(
         final_efficiency=final_eff,
         final_phase_error=final_pe,
         final_non_uniformity=final_nu,
-        n_iterations=len(cost_history),
+        n_iterations=n_iters,
         fidelity_history=fidelity_history,
     )
