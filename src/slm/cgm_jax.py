@@ -94,7 +94,10 @@ def cgm_jax(
         )
 
     shape = input_amplitude.shape
-    phi_init = _initial_phase(shape, config)
+    if config.initial_phase is not None:
+        phi_init = config.initial_phase.copy()
+    else:
+        phi_init = _initial_phase(shape, config)
     phi_init = _align_initial_phase(
         phi_init, input_amplitude, target_field, measure_region,
     )

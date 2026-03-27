@@ -38,6 +38,8 @@ from slm.metrics import (
 from slm.gs import gs, GSResult
 from slm.wgs import wgs, phase_fixed_wgs, WGSConfig, WGSResult
 from slm.cgm import cgm, CGMConfig, CGMResult
+from slm.cgm_lbfgsb import cgm_lbfgsb
+from slm.hybrid import gs_seed_phase
 from slm.device import SLMDevice
 
 try:
@@ -105,6 +107,8 @@ __all__ = [
     "cgm",
     "CGMConfig",
     "CGMResult",
+    "cgm_lbfgsb",
+    "gs_seed_phase",
     # feedback
     "adaptive_feedback_loop",
     "FeedbackConfig",
