@@ -99,7 +99,10 @@ def cgm_jax(
     else:
         phi_init = _initial_phase(shape, config)
     phi_init = _align_initial_phase(
-        phi_init, input_amplitude, target_field, measure_region,
+        phi_init,
+        input_amplitude,
+        target_field,
+        measure_region,
     )
 
     j_amp = jnp.array(input_amplitude)
@@ -112,7 +115,13 @@ def cgm_jax(
     @jax.jit
     def cost_and_grad(phi_flat):
         return jax.value_and_grad(_jax_cost)(
-            phi_flat, j_amp, j_tgt, j_reg, d, ew, em,
+            phi_flat,
+            j_amp,
+            j_tgt,
+            j_reg,
+            d,
+            ew,
+            em,
         )
 
     cost_history: list[float] = []
@@ -143,6 +152,10 @@ def cgm_jax(
     E_out = fft_propagate(input_amplitude * np.exp(1j * phi_final))
 
     return _build_result(
-        phi_final, E_out, target_field, measure_region,
-        cost_history, opt.nit,
+        phi_final,
+        E_out,
+        target_field,
+        measure_region,
+        cost_history,
+        opt.nit,
     )

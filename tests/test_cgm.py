@@ -116,11 +116,17 @@ def test_cgm_gradient_with_efficiency_weight():
         phi_m[i, j] -= eps
         c_p = _cost_function(
             fft_propagate(input_amp * np.exp(1j * phi_p)),
-            target, region, steepness, ew,
+            target,
+            region,
+            steepness,
+            ew,
         )
         c_m = _cost_function(
             fft_propagate(input_amp * np.exp(1j * phi_m)),
-            target, region, steepness, ew,
+            target,
+            region,
+            steepness,
+            ew,
         )
         fd = (c_p - c_m) / (2 * eps)
         np.testing.assert_allclose(grad[i, j], fd, rtol=0.1, atol=1e-3)
@@ -134,11 +140,15 @@ def test_cgm_efficiency_weight_improves_efficiency():
     region = measure_region(shape, target, margin=3)
 
     result_no_w = cgm(
-        input_amp, target, region,
+        input_amp,
+        target,
+        region,
         CGMConfig(max_iterations=80, steepness=6, R=3e-3, efficiency_weight=0.0),
     )
     result_w = cgm(
-        input_amp, target, region,
+        input_amp,
+        target,
+        region,
         CGMConfig(max_iterations=80, steepness=6, R=3e-3, efficiency_weight=1.0),
     )
     assert result_w.final_efficiency > result_no_w.final_efficiency
@@ -168,11 +178,19 @@ def test_cgm_gradient_with_eta_min():
         phi_m[i, j] -= eps
         c_p = _cost_function(
             fft_propagate(input_amp * np.exp(1j * phi_p)),
-            target, region, steepness, 0.0, eta_min_val,
+            target,
+            region,
+            steepness,
+            0.0,
+            eta_min_val,
         )
         c_m = _cost_function(
             fft_propagate(input_amp * np.exp(1j * phi_m)),
-            target, region, steepness, 0.0, eta_min_val,
+            target,
+            region,
+            steepness,
+            0.0,
+            eta_min_val,
         )
         fd = (c_p - c_m) / (2 * eps)
         np.testing.assert_allclose(grad[i, j], fd, rtol=0.1, atol=1e-3)
@@ -186,7 +204,9 @@ def test_cgm_eta_min_maintains_efficiency():
     region = measure_region(shape, target, margin=3)
 
     result = cgm(
-        input_amp, target, region,
+        input_amp,
+        target,
+        region,
         CGMConfig(max_iterations=80, steepness=6, R=3e-3, eta_min=0.3),
     )
     assert result.final_efficiency > 0.2
@@ -201,7 +221,10 @@ def test_cgm_initial_phase_override():
 
     custom_phase = np.zeros(shape)
     config = CGMConfig(
-        max_iterations=10, steepness=6, R=3e-3, initial_phase=custom_phase,
+        max_iterations=10,
+        steepness=6,
+        R=3e-3,
+        initial_phase=custom_phase,
     )
     result = cgm(input_amp, target, region, config)
     assert result.n_iterations > 0

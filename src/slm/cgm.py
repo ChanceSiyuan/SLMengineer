@@ -26,7 +26,9 @@ class CGMConfig:
     track_fidelity: bool = False  # record fidelity each iteration (slower)
     efficiency_weight: float = 0.0  # weight for (1-η)^2 efficiency penalty
     eta_min: float = 0.0  # minimum efficiency floor; penalty when η < eta_min
-    initial_phase: np.ndarray | None = None  # measured/custom phase; overrides analytical
+    initial_phase: np.ndarray | None = (
+        None  # measured/custom phase; overrides analytical
+    )
 
 
 @dataclass
@@ -150,17 +152,9 @@ def _cost_gradient(
             eta = float(norm_B**2 / P_total)
             d_eta = 2.0 * raw_B / P_total
             if efficiency_weight > 0:
-                grad += (
-                    -2.0
-                    * efficiency_weight
-                    * 10**steepness
-                    * (1.0 - eta)
-                    * d_eta
-                )
+                grad += -2.0 * efficiency_weight * 10**steepness * (1.0 - eta) * d_eta
             if eta_min > 0 and eta < eta_min:
-                grad += (
-                    -2.0 * 10**steepness * (eta_min - eta) * d_eta
-                )
+                grad += -2.0 * 10**steepness * (eta_min - eta) * d_eta
 
     return grad
 
@@ -178,10 +172,21 @@ def _eval_cost_and_grad(
     E_in = input_amplitude * np.exp(1j * phi)
     E_out = fft_propagate(E_in)
     cost = _cost_function(
-        E_out, target_field, measure_region, steepness, efficiency_weight, eta_min,
+        E_out,
+        target_field,
+        measure_region,
+        steepness,
+        efficiency_weight,
+        eta_min,
     )
     grad = _cost_gradient(
-        E_in, E_out, target_field, measure_region, steepness, efficiency_weight, eta_min,
+        E_in,
+        E_out,
+        target_field,
+        measure_region,
+        steepness,
+        efficiency_weight,
+        eta_min,
     )
     return cost, grad, E_out
 
@@ -204,8 +209,12 @@ def _line_search(
         E_in = input_amplitude * np.exp(1j * trial_phi)
         E_out = fft_propagate(E_in)
         return _cost_function(
-            E_out, target_field, measure_region, steepness,
-            efficiency_weight, eta_min,
+            E_out,
+            target_field,
+            measure_region,
+            steepness,
+            efficiency_weight,
+            eta_min,
         )
 
     # Probe at geometrically spaced alphas to cover many orders of magnitude.
@@ -241,8 +250,9 @@ def _line_search(
     if lo == hi:
         return best_alpha
 
-    res = minimize_scalar(cost_at, bounds=(lo, hi), method="bounded",
-                          options={"xatol": (hi - lo) * 1e-4})
+    res = minimize_scalar(
+        cost_at, bounds=(lo, hi), method="bounded", options={"xatol": (hi - lo) * 1e-4}
+    )
     return float(res.x)
 
 
@@ -279,11 +289,15 @@ def _build_result(
         final_fidelity=fidelity(E_out, target_field, measure_region),
         final_efficiency=efficiency(E_out, measure_region),
         final_phase_error=phase_error(
-            np.angle(E_out), np.angle(target_field), target_mask,
+            np.angle(E_out),
+            np.angle(target_field),
+            target_mask,
             weights=target_intensity,
         ),
         final_non_uniformity=non_uniformity_error(
-            np.abs(E_out) ** 2, target_intensity, target_mask,
+            np.abs(E_out) ** 2,
+            target_intensity,
+            target_mask,
         ),
         n_iterations=n_iterations,
         fidelity_history=fidelity_history or [],
@@ -326,7 +340,13 @@ def cgm(
 
     # Initial forward pass
     cost, grad, E_out = _eval_cost_and_grad(
-        phi, input_amplitude, target_field, measure_region, config.steepness, ew, em,
+        phi,
+        input_amplitude,
+        target_field,
+        measure_region,
+        config.steepness,
+        ew,
+        em,
     )
     cost_history.append(cost)
     if config.track_fidelity:
@@ -340,15 +360,29 @@ def cgm(
     for i in range(config.max_iterations):
         # Line search along conjugate direction
         alpha = _line_search(
-            phi, direction, cost,
-            input_amplitude, target_field, measure_region, config.steepness, ew, em,
+            phi,
+            direction,
+            cost,
+            input_amplitude,
+            target_field,
+            measure_region,
+            config.steepness,
+            ew,
+            em,
         )
         if alpha == 0.0:
             # Line search failed; reset to steepest descent
             direction = -grad
             alpha = _line_search(
-                phi, direction, cost,
-                input_amplitude, target_field, measure_region, config.steepness, ew, em,
+                phi,
+                direction,
+                cost,
+                input_amplitude,
+                target_field,
+                measure_region,
+                config.steepness,
+                ew,
+                em,
             )
             if alpha == 0.0:
                 break
@@ -357,7 +391,13 @@ def cgm(
 
         # Recompute cost and gradient at new point
         new_cost, new_grad, E_out = _eval_cost_and_grad(
-            phi, input_amplitude, target_field, measure_region, config.steepness, ew, em,
+            phi,
+            input_amplitude,
+            target_field,
+            measure_region,
+            config.steepness,
+            ew,
+            em,
         )
         cost_history.append(new_cost)
         if config.track_fidelity:
@@ -370,7 +410,9 @@ def cgm(
             callback(i + 1, new_cost)
 
         # Check convergence (relative criterion)
-        if abs(cost - new_cost) < config.convergence_threshold * max(abs(new_cost), 1.0):
+        if abs(cost - new_cost) < config.convergence_threshold * max(
+            abs(new_cost), 1.0
+        ):
             break
 
         # Fletcher-Reeves conjugate direction update with periodic restart
@@ -386,6 +428,11 @@ def cgm(
         grad_norm_sq = new_grad_norm_sq
 
     return _build_result(
-        phi, E_out, target_field, measure_region,
-        cost_history, n_iters, fidelity_history,
+        phi,
+        E_out,
+        target_field,
+        measure_region,
+        cost_history,
+        n_iters,
+        fidelity_history,
     )

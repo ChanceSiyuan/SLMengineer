@@ -479,7 +479,8 @@ def disordered_array(
 
 
 def mask_from_target(
-    target: np.ndarray, threshold: float | None = None,
+    target: np.ndarray,
+    threshold: float | None = None,
 ) -> np.ndarray:
     """Binary mask: 1 where |target| > threshold, 0 elsewhere.
 

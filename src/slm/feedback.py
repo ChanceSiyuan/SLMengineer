@@ -155,7 +155,9 @@ def simulate_continuous_measurement(
     if rng is None:
         rng = np.random.default_rng()
     intensity = np.abs(focal_field) ** 2
-    mean_signal = np.mean(intensity[region_mask > 0]) if np.any(region_mask > 0) else 1.0
+    mean_signal = (
+        np.mean(intensity[region_mask > 0]) if np.any(region_mask > 0) else 1.0
+    )
     noise = rng.normal(0, noise_level * mean_signal, size=intensity.shape)
     return np.maximum(intensity + noise, 0.0)
 
@@ -199,11 +201,17 @@ def adaptive_feedback_continuous(
     from slm.camera import SimulatedCamera
 
     camera = SimulatedCamera(
-        input_amplitude, noise_level=noise_level, rng=rng,
+        input_amplitude,
+        noise_level=noise_level,
+        rng=rng,
     )
     return experimental_feedback_loop(
-        input_amplitude, target_field, measure_region, camera,
-        n_steps=n_steps, max_iter=max_iter,
+        input_amplitude,
+        target_field,
+        measure_region,
+        camera,
+        n_steps=n_steps,
+        max_iter=max_iter,
     )
 
 
@@ -215,7 +223,7 @@ def experimental_feedback_loop(
     n_steps: int = 5,
     max_iter: int = 100,
     measure_phase: bool = False,
-    cgm_config: "CGMConfig | None" = None,
+    cgm_config: object = None,
 ) -> list:
     """Closed-loop feedback using a camera (real or simulated).
 
@@ -242,10 +250,9 @@ def experimental_feedback_loop(
 
     for _step in range(n_steps):
         if cgm_config is not None:
-            config = CGMConfig(**{
-                k: v for k, v in cgm_config.__dict__.items()
-                if k != "initial_phase"
-            })
+            config = CGMConfig(
+                **{k: v for k, v in cgm_config.__dict__.items() if k != "initial_phase"}
+            )
         else:
             config = CGMConfig(eta_min=0.05)
         config.max_iterations = max_iter
@@ -257,7 +264,9 @@ def experimental_feedback_loop(
 
         measured_I = camera.capture_intensity(result.slm_phase)
         current_target = adjust_target_continuous(
-            current_target, measured_I, measure_region,
+            current_target,
+            measured_I,
+            measure_region,
         )
 
         if measure_phase and hasattr(camera, "capture_fringes"):

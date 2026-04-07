@@ -70,6 +70,7 @@ __all__ = [
     "ifft_propagate",
     "pad_field",
     # beams
+    "from_camera_intensity",
     "gaussian_beam",
     "initial_slm_field",
     "random_phase",
@@ -108,14 +109,24 @@ __all__ = [
     "CGMConfig",
     "CGMResult",
     "cgm_lbfgsb",
+    "cgm_jax",
     "gs_seed_phase",
+    "SLMDevice",
+    # camera
+    "CameraInterface",
+    "SimulatedCamera",
+    "takeda_phase_retrieval",
     # feedback
+    "adaptive_feedback_continuous",
     "adaptive_feedback_loop",
+    "experimental_feedback_loop",
     "FeedbackConfig",
     # transforms
+    "apply_measured_correction",
     "apply_zernike_correction",
     "anti_aliased_affine_transform",
     "generate_aberration",
     "zernike",
+    "zernike_decompose",
     "zernike_from_noll",
 ]

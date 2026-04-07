@@ -3,13 +3,14 @@
 import numpy as np
 import pytest
 
+from slm.beams import gaussian_beam  # noqa: E402
+from slm.cgm import CGMConfig, _cost_function, _initial_phase  # noqa: E402
+from slm.propagation import fft_propagate  # noqa: E402
+from slm.targets import measure_region, top_hat  # noqa: E402
+
 jax = pytest.importorskip("jax")
 
-from slm.beams import gaussian_beam
-from slm.cgm import CGMConfig, _cost_function, _initial_phase
-from slm.cgm_jax import _jax_cost, cgm_jax
-from slm.propagation import fft_propagate
-from slm.targets import measure_region, top_hat
+from slm.cgm_jax import _jax_cost, cgm_jax  # noqa: E402
 
 
 def test_cgm_jax_cost_matches_numpy():
@@ -25,12 +26,23 @@ def test_cgm_jax_cost_matches_numpy():
 
     np_cost = _cost_function(
         fft_propagate(input_amp * np.exp(1j * phi)),
-        target, region, 6, 0.0, 0.0,
+        target,
+        region,
+        6,
+        0.0,
+        0.0,
     )
-    jax_cost = float(_jax_cost(
-        jnp.array(phi.ravel()), jnp.array(input_amp),
-        jnp.array(target), jnp.array(region), 6, 0.0, 0.0,
-    ))
+    jax_cost = float(
+        _jax_cost(
+            jnp.array(phi.ravel()),
+            jnp.array(input_amp),
+            jnp.array(target),
+            jnp.array(region),
+            6,
+            0.0,
+            0.0,
+        )
+    )
 
     np.testing.assert_allclose(jax_cost, np_cost, rtol=1e-6)
 
@@ -50,7 +62,9 @@ def test_cgm_jax_gradient_vs_finite_diff():
     j_tgt = jnp.array(target)
     j_reg = jnp.array(region)
     grad_fn = jax.grad(_jax_cost)
-    jax_grad = np.array(grad_fn(jnp.array(phi.ravel()), j_amp, j_tgt, j_reg, 4, 0.0, 0.0))
+    jax_grad = np.array(
+        grad_fn(jnp.array(phi.ravel()), j_amp, j_tgt, j_reg, 4, 0.0, 0.0)
+    )
     jax_grad_2d = jax_grad.reshape(shape)
 
     eps = 1e-5
@@ -60,8 +74,12 @@ def test_cgm_jax_gradient_vs_finite_diff():
         phi_p, phi_m = phi.copy(), phi.copy()
         phi_p[i, j] += eps
         phi_m[i, j] -= eps
-        c_p = float(_jax_cost(jnp.array(phi_p.ravel()), j_amp, j_tgt, j_reg, 4, 0.0, 0.0))
-        c_m = float(_jax_cost(jnp.array(phi_m.ravel()), j_amp, j_tgt, j_reg, 4, 0.0, 0.0))
+        c_p = float(
+            _jax_cost(jnp.array(phi_p.ravel()), j_amp, j_tgt, j_reg, 4, 0.0, 0.0)
+        )
+        c_m = float(
+            _jax_cost(jnp.array(phi_m.ravel()), j_amp, j_tgt, j_reg, 4, 0.0, 0.0)
+        )
         fd = (c_p - c_m) / (2 * eps)
         np.testing.assert_allclose(jax_grad_2d[i, j], fd, rtol=0.1, atol=1e-3)
 

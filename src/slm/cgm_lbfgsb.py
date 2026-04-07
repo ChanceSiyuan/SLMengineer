@@ -25,8 +25,10 @@ from slm.propagation import fft_propagate, ifft_propagate
 def _discrete_laplacian(phi: np.ndarray) -> np.ndarray:
     """Discrete Laplacian via 4-connected finite differences."""
     return (
-        np.roll(phi, 1, 0) + np.roll(phi, -1, 0)
-        + np.roll(phi, 1, 1) + np.roll(phi, -1, 1)
+        np.roll(phi, 1, 0)
+        + np.roll(phi, -1, 0)
+        + np.roll(phi, 1, 1)
+        + np.roll(phi, -1, 1)
         - 4.0 * phi
     )
 
@@ -80,7 +82,9 @@ def cgm_lbfgsb(
     em = config.eta_min
     coupled = cost_mode in ("coupled", "coupled+smooth")
     use_smooth = smooth_weight > 0 or cost_mode == "coupled+smooth"
-    sw = smooth_weight if smooth_weight > 0 else (1e-3 if "smooth" in cost_mode else 0.0)
+    sw = (
+        smooth_weight if smooth_weight > 0 else (1e-3 if "smooth" in cost_mode else 0.0)
+    )
 
     def objective(phi_active: np.ndarray) -> tuple[float, np.ndarray]:
         phi_full[active] = phi_active
@@ -146,7 +150,10 @@ def cgm_lbfgsb(
             callback(iter_count[0], cost_history[-1])
 
     res = scipy_minimize(
-        fun=objective, x0=phi.ravel()[active], method="L-BFGS-B", jac=True,
+        fun=objective,
+        x0=phi.ravel()[active],
+        method="L-BFGS-B",
+        jac=True,
         callback=_cb,
         options={"maxiter": config.max_iterations, "ftol": 1e-15, "gtol": 1e-12},
     )
@@ -155,5 +162,6 @@ def cgm_lbfgsb(
     phi_final[active] = res.x
     phi_final = phi_final.reshape(shape)
     E_out = fft_propagate(input_amplitude * np.exp(1j * phi_final))
-    return _build_result(phi_final, E_out, target_field, measure_region,
-                         cost_history, res.nit)
+    return _build_result(
+        phi_final, E_out, target_field, measure_region, cost_history, res.nit
+    )

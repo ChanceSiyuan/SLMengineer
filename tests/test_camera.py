@@ -60,7 +60,12 @@ def test_experimental_feedback_loop():
     cam = SimulatedCamera(amp, noise_level=0.0)
 
     results = experimental_feedback_loop(
-        amp, target, region, cam, n_steps=2, max_iter=20,
+        amp,
+        target,
+        region,
+        cam,
+        n_steps=2,
+        max_iter=20,
     )
     assert len(results) == 2
     assert results[-1].final_fidelity > 0

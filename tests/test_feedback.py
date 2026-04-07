@@ -74,8 +74,12 @@ def test_continuous_feedback_reduces_error():
     region = measure_region(shape, target, margin=3)
 
     results = adaptive_feedback_continuous(
-        input_amp, target, region,
-        n_steps=3, max_iter=30, noise_level=0.0,
+        input_amp,
+        target,
+        region,
+        n_steps=3,
+        max_iter=30,
+        noise_level=0.0,
     )
     assert len(results) == 3
     assert results[-1].final_fidelity >= results[0].final_fidelity * 0.8

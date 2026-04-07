@@ -122,8 +122,10 @@ def takeda_phase_retrieval(
         mag = np.abs(F)
         cy, cx = ny // 2, nx // 2
         r_suppress = max(3, min(ny, nx) // 20)
-        mag[cy - r_suppress : cy + r_suppress + 1, cx - r_suppress : cx + r_suppress + 1] = 0
-        mag[: cy, :] = 0
+        mag[
+            cy - r_suppress : cy + r_suppress + 1, cx - r_suppress : cx + r_suppress + 1
+        ] = 0
+        mag[:cy, :] = 0
         peak_idx = np.unravel_index(np.argmax(mag), mag.shape)
         fy_det = (peak_idx[0] - cy) / ny
         fx_det = (peak_idx[1] - cx) / nx

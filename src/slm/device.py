@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import numpy as np
-
 
 @dataclass
 class SLMDevice:
@@ -40,9 +38,9 @@ class SLMDevice:
         pitch_focal = (wavelength * focal_length) / (N_pad * pixel_pitch)
         """
         n = n_pad if n_pad is not None else max(self.n_pixels)
-        return (
-            self.wavelength_nm * 1e-3 * self.focal_length_mm
-        ) / (n * self.pixel_pitch_um)
+        return (self.wavelength_nm * 1e-3 * self.focal_length_mm) / (
+            n * self.pixel_pitch_um
+        )
 
     def um_to_focal_px(self, um: float, n_pad: int | None = None) -> float:
         """Convert micrometres in the focal plane to focal-plane pixels."""

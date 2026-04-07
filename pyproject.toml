@@ -12,6 +12,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+app = ["streamlit>=1.30"]
 jax = ["jax>=0.4", "jaxlib>=0.4"]
 dev = [
     "pytest>=8.0",
