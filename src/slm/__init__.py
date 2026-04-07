@@ -55,7 +55,21 @@ try:
 except ImportError:
     pass
 
-from slm.camera import CameraInterface, SimulatedCamera, takeda_phase_retrieval
+from slm.camera import CameraInterface, HardwareCamera, SimulatedCamera, takeda_phase_retrieval
+
+try:
+    from slm.hardware import (
+        HardwareConfig,
+        apply_lut_correction,
+        combine_screens,
+        crop_to_slm,
+        fresnel_lens_phase,
+        load_calibration_bmp,
+        phase_to_screen,
+        phase_to_uint8,
+    )
+except ImportError:
+    pass
 from slm.feedback import (
     adaptive_feedback_continuous,
     adaptive_feedback_loop,
@@ -126,8 +140,18 @@ __all__ = [
     "SLMDevice",
     # camera
     "CameraInterface",
+    "HardwareCamera",
     "SimulatedCamera",
     "takeda_phase_retrieval",
+    # hardware utilities
+    "HardwareConfig",
+    "apply_lut_correction",
+    "combine_screens",
+    "crop_to_slm",
+    "fresnel_lens_phase",
+    "load_calibration_bmp",
+    "phase_to_screen",
+    "phase_to_uint8",
     # feedback
     "adaptive_feedback_continuous",
     "adaptive_feedback_loop",

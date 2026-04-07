@@ -51,3 +51,25 @@ class SLMDevice:
     def padded_shape(self, pad_factor: int = 2) -> tuple[int, int]:
         """Zero-padded output grid shape."""
         return (self.n_pixels[0] * pad_factor, self.n_pixels[1] * pad_factor)
+
+    @classmethod
+    def hamamatsu_x13138(cls) -> SLMDevice:
+        """Hamamatsu X13138 series LCOS-SLM preset (1013 nm configuration)."""
+        return cls(
+            pixel_pitch_um=12.5,
+            n_pixels=(1024, 1272),
+            wavelength_nm=1013.0,
+            focal_length_mm=200.0,
+            fill_factor=0.98,
+        )
+
+    @classmethod
+    def bns_p1920(cls) -> SLMDevice:
+        """Boulder Nonlinear Systems P1920 preset (1070 nm configuration)."""
+        return cls(
+            pixel_pitch_um=24.0,
+            n_pixels=(256, 256),
+            wavelength_nm=1070.0,
+            focal_length_mm=150.0,
+            fill_factor=0.87,
+        )
