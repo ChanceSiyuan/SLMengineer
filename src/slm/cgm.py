@@ -9,7 +9,12 @@ import numpy as np
 from scipy.optimize import minimize_scalar
 
 from slm.metrics import efficiency, fidelity, non_uniformity_error, phase_error
-from slm.propagation import fft_propagate, ifft_propagate
+from slm.propagation import (
+    fft_propagate,
+    ifft_propagate,
+    realistic_propagate,
+    sinc_envelope,
+)
 from slm.targets import mask_from_target
 
 
@@ -29,6 +34,7 @@ class CGMConfig:
     initial_phase: np.ndarray | None = (
         None  # measured/custom phase; overrides analytical
     )
+    fill_factor: float = 1.0  # SLM pixel fill factor (1.0 = ideal, no sinc)
 
 
 @dataclass
@@ -82,6 +88,26 @@ def _compute_overlap(
     return np.sum(np.conj(tgt_masked / tgt_norm) * (out_masked / out_norm))
 
 
+def _forward(
+    E_in: np.ndarray,
+    sinc_env: np.ndarray | None,
+) -> np.ndarray:
+    """Forward propagation, optionally with sinc envelope."""
+    if sinc_env is not None:
+        return realistic_propagate(E_in, sinc_env)
+    return fft_propagate(E_in)
+
+
+def _back(
+    X: np.ndarray,
+    sinc_env: np.ndarray | None,
+) -> np.ndarray:
+    """Adjoint back-propagation: IFFT(sinc * X) when sinc active."""
+    if sinc_env is not None:
+        return ifft_propagate(sinc_env * X)
+    return ifft_propagate(X)
+
+
 def _cost_function(
     output_field: np.ndarray,
     target_field: np.ndarray,
@@ -117,10 +143,13 @@ def _cost_gradient(
     steepness: int,
     efficiency_weight: float = 0.0,
     eta_min: float = 0.0,
+    sinc_env: np.ndarray | None = None,
 ) -> np.ndarray:
     """Compute dC/d(phi_{p,q}) analytically.
 
     Accepts pre-computed E_in and E_out to avoid redundant FFT.
+    When *sinc_env* is provided, uses the adjoint sinc·IFFT for
+    back-propagation (since forward is sinc·FFT).
     """
     A = target_field * measure_region
     B = E_out * measure_region
@@ -135,9 +164,9 @@ def _cost_gradient(
     r = np.sum(np.conj(A) * B)
     overlap_real = np.real(r) / (norm_A * norm_B)
 
-    # Back-propagate masked fields to SLM plane
-    back_A = ifft_propagate(A)
-    back_B = ifft_propagate(B)
+    # Back-propagate masked fields to SLM plane (adjoint includes sinc)
+    back_A = _back(A, sinc_env)
+    back_B = _back(B, sinc_env)
 
     d_Re_r = np.real(1j * E_in * np.conj(back_A))
     raw_B = np.real(1j * E_in * np.conj(back_B))  # shared by d_norm_B and d_eta
@@ -167,10 +196,11 @@ def _eval_cost_and_grad(
     steepness: int,
     efficiency_weight: float = 0.0,
     eta_min: float = 0.0,
+    sinc_env: np.ndarray | None = None,
 ) -> tuple[float, np.ndarray, np.ndarray]:
     """Evaluate cost and gradient. Returns (cost, gradient, E_out)."""
     E_in = input_amplitude * np.exp(1j * phi)
-    E_out = fft_propagate(E_in)
+    E_out = _forward(E_in, sinc_env)
     cost = _cost_function(
         E_out,
         target_field,
@@ -187,6 +217,7 @@ def _eval_cost_and_grad(
         steepness,
         efficiency_weight,
         eta_min,
+        sinc_env,
     )
     return cost, grad, E_out
 
@@ -201,13 +232,14 @@ def _line_search(
     steepness: int,
     efficiency_weight: float = 0.0,
     eta_min: float = 0.0,
+    sinc_env: np.ndarray | None = None,
 ) -> float:
     """Geometric probing + bounded refinement line search."""
 
     def cost_at(alpha: float) -> float:
         trial_phi = phi + alpha * direction
         E_in = input_amplitude * np.exp(1j * trial_phi)
-        E_out = fft_propagate(E_in)
+        E_out = _forward(E_in, sinc_env)
         return _cost_function(
             E_out,
             target_field,
@@ -261,9 +293,10 @@ def _align_initial_phase(
     input_amplitude: np.ndarray,
     target_field: np.ndarray,
     measure_region: np.ndarray,
+    sinc_env: np.ndarray | None = None,
 ) -> np.ndarray:
     """Rotate initial phase so Re{overlap} = |overlap| (positive real)."""
-    E_tmp = fft_propagate(input_amplitude * np.exp(1j * phi))
+    E_tmp = _forward(input_amplitude * np.exp(1j * phi), sinc_env)
     init_overlap = _compute_overlap(E_tmp, target_field, measure_region)
     if abs(init_overlap) > 1e-10:
         phi = phi - np.angle(init_overlap)
@@ -330,7 +363,14 @@ def cgm(
     else:
         phi = _initial_phase(shape, config)
 
-    phi = _align_initial_phase(phi, input_amplitude, target_field, measure_region)
+    # Precompute sinc envelope when fill_factor < 1
+    sinc_env: np.ndarray | None = None
+    if config.fill_factor < 1.0:
+        sinc_env = sinc_envelope(target_field.shape, config.fill_factor)
+
+    phi = _align_initial_phase(
+        phi, input_amplitude, target_field, measure_region, sinc_env
+    )
 
     cost_history: list[float] = []
     fidelity_history: list[float] = []
@@ -347,6 +387,7 @@ def cgm(
         config.steepness,
         ew,
         em,
+        sinc_env,
     )
     cost_history.append(cost)
     if config.track_fidelity:
@@ -369,6 +410,7 @@ def cgm(
             config.steepness,
             ew,
             em,
+            sinc_env,
         )
         if alpha == 0.0:
             # Line search failed; reset to steepest descent
@@ -383,6 +425,7 @@ def cgm(
                 config.steepness,
                 ew,
                 em,
+                sinc_env,
             )
             if alpha == 0.0:
                 break
@@ -398,6 +441,7 @@ def cgm(
             config.steepness,
             ew,
             em,
+            sinc_env,
         )
         cost_history.append(new_cost)
         if config.track_fidelity:

@@ -12,7 +12,7 @@ from typing import Protocol
 import numpy as np
 from scipy.fft import fft2, fftshift, ifft2, ifftshift
 
-from slm.propagation import fft_propagate
+from slm.propagation import fft_propagate, realistic_propagate
 
 
 class CameraInterface(Protocol):
@@ -47,6 +47,7 @@ class SimulatedCamera:
         reference_amplitude: float = 1.0,
         carrier_freq: tuple[float, float] = (0.0, 0.05),
         rng: np.random.Generator | None = None,
+        sinc_env: np.ndarray | None = None,
     ):
         self.input_amplitude = input_amplitude
         self.aberration = aberration
@@ -54,6 +55,7 @@ class SimulatedCamera:
         self.reference_amplitude = reference_amplitude
         self.carrier_freq = carrier_freq
         self.rng = rng or np.random.default_rng()
+        self.sinc_env = sinc_env
 
     def _propagate(self, slm_phase: np.ndarray) -> np.ndarray:
         """Propagate SLM field to focal plane, with optional aberration."""
@@ -61,6 +63,8 @@ class SimulatedCamera:
         if self.aberration is not None:
             total_phase = slm_phase + self.aberration
         E_in = self.input_amplitude * np.exp(1j * total_phase)
+        if self.sinc_env is not None:
+            return realistic_propagate(E_in, self.sinc_env)
         return fft_propagate(E_in)
 
     def _add_noise(self, image: np.ndarray) -> np.ndarray:

@@ -32,3 +32,13 @@ def test_padded_shape():
     dev = SLMDevice(n_pixels=(256, 256))
     assert dev.padded_shape(2) == (512, 512)
     assert dev.padded_shape(4) == (1024, 1024)
+
+
+def test_fill_factor_default():
+    dev = SLMDevice()
+    assert dev.fill_factor == 1.0
+
+
+def test_fill_factor_custom():
+    dev = SLMDevice(fill_factor=0.87)
+    assert dev.fill_factor == 0.87

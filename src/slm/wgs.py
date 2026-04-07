@@ -9,7 +9,12 @@ import numpy as np
 
 from slm.gs import GSResult
 from slm.metrics import uniformity
-from slm.propagation import fft_propagate, ifft_propagate
+from slm.propagation import (
+    fft_propagate,
+    ifft_propagate,
+    realistic_ifft_propagate,
+    realistic_propagate,
+)
 
 
 @dataclass
@@ -39,6 +44,7 @@ def wgs(
     mask: np.ndarray,
     config: WGSConfig = WGSConfig(),
     callback: Callable[[int, np.ndarray, np.ndarray], None] | None = None,
+    sinc_env: np.ndarray | None = None,
 ) -> WGSResult:
     """Weighted Gerchberg-Saxton with optional phase fixing.
 
@@ -79,8 +85,19 @@ def wgs(
     # Parseval: total power is constant under ortho FFT
     total_power = float(np.sum(slm_amp**2))
 
+    _fwd = (
+        (lambda f: realistic_propagate(f, sinc_env))
+        if sinc_env is not None
+        else fft_propagate
+    )
+    _inv = (
+        (lambda f: realistic_ifft_propagate(f, sinc_env))
+        if sinc_env is not None
+        else ifft_propagate
+    )
+
     for i in range(config.n_iterations):
-        R = fft_propagate(L)
+        R = _fwd(L)
 
         spot_amps = np.abs(R[mask_bool])
         if len(spot_amps) == 0:
@@ -118,11 +135,11 @@ def wgs(
         # else: keep current_phase from previous iteration
 
         R_prime = target_amp * g * np.exp(1j * current_phase)
-        L_prime = ifft_propagate(R_prime)
+        L_prime = _inv(R_prime)
         L = slm_amp * np.exp(1j * np.angle(L_prime))
 
     # Final propagation
-    focal_field = fft_propagate(L)
+    focal_field = _fwd(L)
 
     return WGSResult(
         slm_phase=np.angle(L),
@@ -145,6 +162,7 @@ def phase_fixed_wgs(
     n_iterations: int = 200,
     uniformity_threshold: float = 0.005,
     callback: Callable[[int, np.ndarray, np.ndarray], None] | None = None,
+    sinc_env: np.ndarray | None = None,
 ) -> WGSResult:
     """Convenience wrapper: WGS with phase fixing at iteration N.
 
@@ -156,4 +174,4 @@ def phase_fixed_wgs(
         uniformity_threshold=uniformity_threshold,
         phase_fix_iteration=phase_fix_iteration,
     )
-    return wgs(initial_field, target, mask, config, callback)
+    return wgs(initial_field, target, mask, config, callback, sinc_env)

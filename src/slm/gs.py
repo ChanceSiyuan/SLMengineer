@@ -8,7 +8,12 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from slm.metrics import uniformity
-from slm.propagation import fft_propagate, ifft_propagate
+from slm.propagation import (
+    fft_propagate,
+    ifft_propagate,
+    realistic_ifft_propagate,
+    realistic_propagate,
+)
 
 
 @dataclass
@@ -27,6 +32,7 @@ def gs(
     target: np.ndarray,
     n_iterations: int = 100,
     callback: Callable[[int, np.ndarray, np.ndarray], None] | None = None,
+    sinc_env: np.ndarray | None = None,
 ) -> GSResult:
     """Basic Gerchberg-Saxton iterative phase retrieval.
 
@@ -36,11 +42,12 @@ def gs(
     target : complex (ny, nx) -- desired focal plane field.
     n_iterations : number of iterations.
     callback : optional function called each iteration with (i, slm_field, focal_field).
+    sinc_env : optional precomputed sinc envelope for pixelation modeling.
 
     Algorithm per iteration:
-        1. R = FFT(L)
+        1. R = FFT(L)           [with optional sinc envelope]
         2. R' = |target| * exp(i * angle(R))   [replace amplitude, keep phase]
-        3. L' = IFFT(R')
+        3. L' = IFFT(R')        [with optional sinc pre-compensation]
         4. L = |L_0| * exp(i * angle(L'))      [restore SLM amplitude, keep phase]
     """
     target_amp = np.abs(target)
@@ -53,8 +60,19 @@ def gs(
     spot_mask = target_amp > 0
     total_power = float(np.sum(slm_amp**2))  # constant under ortho FFT
 
+    _fwd = (
+        (lambda f: realistic_propagate(f, sinc_env))
+        if sinc_env is not None
+        else fft_propagate
+    )
+    _inv = (
+        (lambda f: realistic_ifft_propagate(f, sinc_env))
+        if sinc_env is not None
+        else ifft_propagate
+    )
+
     for i in range(n_iterations):
-        R = fft_propagate(L)
+        R = _fwd(L)
 
         spot_intensities = np.abs(R[spot_mask]) ** 2
         if len(spot_intensities) > 0:
@@ -70,14 +88,14 @@ def gs(
         # Replace amplitude with target, keep phase
         R_prime = target_amp * np.exp(1j * np.angle(R))
 
-        # Backward propagate
-        L_prime = ifft_propagate(R_prime)
+        # Backward propagate (sinc pre-compensation if active)
+        L_prime = _inv(R_prime)
 
         # Restore SLM amplitude, keep updated phase
         L = slm_amp * np.exp(1j * np.angle(L_prime))
 
     # Final forward propagation
-    focal_field = fft_propagate(L)
+    focal_field = _fwd(L)
 
     return GSResult(
         slm_phase=np.angle(L),

@@ -20,7 +20,7 @@ from slm.cgm import (
     _build_result,
     _initial_phase,
 )
-from slm.propagation import fft_propagate
+from slm.propagation import fft_propagate, realistic_propagate, sinc_envelope
 
 try:
     import jax
@@ -47,12 +47,15 @@ def _jax_cost(
     steepness: int,
     efficiency_weight: float,
     eta_min: float,
+    sinc_env: jnp.ndarray | None = None,
 ) -> jnp.ndarray:
     """Pure JAX cost function (forward only — jax.grad handles backward)."""
     shape = input_amplitude.shape
     phi = phi_flat.reshape(shape)
     E_in = input_amplitude * jnp.exp(1j * phi)
     E_out = _jax_fft_propagate(E_in)
+    if sinc_env is not None:
+        E_out = E_out * sinc_env
 
     out_m = E_out * measure_region
     tgt_m = target_field * measure_region
@@ -98,16 +101,25 @@ def cgm_jax(
         phi_init = config.initial_phase.copy()
     else:
         phi_init = _initial_phase(shape, config)
+    # Precompute sinc envelope when fill_factor < 1
+    sinc_env_np = (
+        sinc_envelope(target_field.shape, config.fill_factor)
+        if config.fill_factor < 1.0
+        else None
+    )
+
     phi_init = _align_initial_phase(
         phi_init,
         input_amplitude,
         target_field,
         measure_region,
+        sinc_env_np,
     )
 
     j_amp = jnp.array(input_amplitude)
     j_tgt = jnp.array(target_field)
     j_reg = jnp.array(measure_region)
+    j_sinc = jnp.array(sinc_env_np) if sinc_env_np is not None else None
     d = int(config.steepness)
     ew = float(config.efficiency_weight)
     em = float(config.eta_min)
@@ -122,6 +134,7 @@ def cgm_jax(
             d,
             ew,
             em,
+            j_sinc,
         )
 
     cost_history: list[float] = []
@@ -149,7 +162,12 @@ def cgm_jax(
     )
 
     phi_final = opt.x.reshape(shape)
-    E_out = fft_propagate(input_amplitude * np.exp(1j * phi_final))
+    E_in_final = input_amplitude * np.exp(1j * phi_final)
+    E_out = (
+        realistic_propagate(E_in_final, sinc_env_np)
+        if sinc_env_np is not None
+        else fft_propagate(E_in_final)
+    )
 
     return _build_result(
         phi_final,

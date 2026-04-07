@@ -23,6 +23,7 @@ class SLMDevice:
     wavelength_nm: float = 1070.0
     focal_length_mm: float = 150.0
     diffraction_efficiency: float = 1.0
+    fill_factor: float = 1.0  # active pixel width / pixel pitch (0-1)
 
     @property
     def pixel_pitch_mm(self) -> float:

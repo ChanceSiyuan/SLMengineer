@@ -2,7 +2,15 @@
 
 __version__ = "0.1.0"
 
-from slm.propagation import fft_propagate, ifft_propagate, pad_field
+from slm.propagation import (
+    fft_propagate,
+    ifft_propagate,
+    pad_field,
+    realistic_ifft_propagate,
+    realistic_propagate,
+    sinc_envelope,
+    zero_order_field,
+)
 from slm.beams import (
     from_camera_intensity,
     gaussian_beam,
@@ -69,6 +77,10 @@ __all__ = [
     "fft_propagate",
     "ifft_propagate",
     "pad_field",
+    "realistic_propagate",
+    "realistic_ifft_propagate",
+    "sinc_envelope",
+    "zero_order_field",
     # beams
     "from_camera_intensity",
     "gaussian_beam",

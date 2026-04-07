@@ -19,7 +19,12 @@ from slm.cgm import (
     _build_result,
     _initial_phase,
 )
-from slm.propagation import fft_propagate, ifft_propagate
+from slm.propagation import (
+    fft_propagate,
+    ifft_propagate,
+    realistic_propagate,
+    sinc_envelope,
+)
 
 
 def _discrete_laplacian(phi: np.ndarray) -> np.ndarray:
@@ -65,7 +70,17 @@ def cgm_lbfgsb(
         phi = config.initial_phase.copy()
     else:
         phi = _initial_phase(shape, config)
-    phi = _align_initial_phase(phi, input_amplitude, target_field, measure_region)
+
+    # Precompute sinc envelope when fill_factor < 1
+    sinc_env = (
+        sinc_envelope(target_field.shape, config.fill_factor)
+        if config.fill_factor < 1.0
+        else None
+    )
+
+    phi = _align_initial_phase(
+        phi, input_amplitude, target_field, measure_region, sinc_env
+    )
 
     active = input_amplitude.ravel() > 1e-12
     phi_full = phi.ravel().copy()
@@ -74,7 +89,7 @@ def cgm_lbfgsb(
     # saving one full IFFT per function evaluation.
     A = target_field * measure_region
     norm_A = np.sqrt(np.sum(np.abs(A) ** 2))
-    back_A = ifft_propagate(A)
+    back_A = ifft_propagate(sinc_env * A) if sinc_env is not None else ifft_propagate(A)
     scale = 10**config.steepness
 
     cost_history: list[float] = []
@@ -90,7 +105,11 @@ def cgm_lbfgsb(
         phi_full[active] = phi_active
         phi_2d = phi_full.reshape(shape)
         E_in = input_amplitude * np.exp(1j * phi_2d)
-        E_out = fft_propagate(E_in)
+        E_out = (
+            realistic_propagate(E_in, sinc_env)
+            if sinc_env is not None
+            else fft_propagate(E_in)
+        )
 
         B = E_out * measure_region
         norm_B = np.sqrt(np.sum(np.abs(B) ** 2))
@@ -103,7 +122,9 @@ def cgm_lbfgsb(
         overlap_real = np.real(r) / (norm_A * norm_B)
 
         # Gradient building blocks (precomputed back_A saves one IFFT)
-        back_B = ifft_propagate(B)
+        back_B = (
+            ifft_propagate(sinc_env * B) if sinc_env is not None else ifft_propagate(B)
+        )
         d_Re_r = np.real(1j * E_in * np.conj(back_A))
         raw_B = np.real(1j * E_in * np.conj(back_B))
         d_norm_B = raw_B / norm_B
@@ -161,7 +182,12 @@ def cgm_lbfgsb(
     phi_final = phi.ravel().copy()
     phi_final[active] = res.x
     phi_final = phi_final.reshape(shape)
-    E_out = fft_propagate(input_amplitude * np.exp(1j * phi_final))
+    E_in_final = input_amplitude * np.exp(1j * phi_final)
+    E_out = (
+        realistic_propagate(E_in_final, sinc_env)
+        if sinc_env is not None
+        else fft_propagate(E_in_final)
+    )
     return _build_result(
         phi_final, E_out, target_field, measure_region, cost_history, res.nit
     )

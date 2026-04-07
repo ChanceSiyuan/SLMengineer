@@ -4,8 +4,15 @@ import numpy as np
 import pytest
 
 from slm.beams import gaussian_beam
-from slm.cgm import CGMConfig, _cost_function, _cost_gradient, _initial_phase, cgm
-from slm.propagation import fft_propagate
+from slm.cgm import (
+    CGMConfig,
+    _cost_function,
+    _cost_gradient,
+    _forward,
+    _initial_phase,
+    cgm,
+)
+from slm.propagation import fft_propagate, sinc_envelope
 from slm.targets import measure_region, top_hat
 
 
@@ -229,3 +236,48 @@ def test_cgm_initial_phase_override():
     result = cgm(input_amp, target, region, config)
     assert result.n_iterations > 0
     assert result.final_fidelity > 0
+
+
+def test_cgm_with_fill_factor():
+    """CGM should converge with fill_factor < 1 (sinc envelope active)."""
+    shape = (64, 64)
+    input_amp = gaussian_beam(shape, sigma=15.0, normalize=False)
+    target = top_hat(shape, radius=8.0)
+    region = measure_region(shape, target, margin=3)
+    config = CGMConfig(max_iterations=80, steepness=6, R=3e-3, fill_factor=0.9)
+    result = cgm(input_amp, target, region, config)
+    assert result.final_fidelity > 0.7
+    assert len(result.cost_history) > 1
+    assert result.cost_history[-1] < result.cost_history[0]
+
+
+def test_cgm_gradient_with_sinc_finite_difference():
+    """Verify analytical gradient with sinc matches finite-difference."""
+    shape = (32, 32)
+    input_amp = gaussian_beam(shape, sigma=8.0, normalize=False)
+    target = top_hat(shape, radius=5.0)
+    region = measure_region(shape, target, margin=2)
+    steepness = 4
+    sinc_env = sinc_envelope(shape, fill_factor=0.85)
+
+    phi = _initial_phase(shape, CGMConfig(steepness=steepness))
+    E_in = input_amp * np.exp(1j * phi)
+    E_out = _forward(E_in, sinc_env)
+    grad = _cost_gradient(E_in, E_out, target, region, steepness, sinc_env=sinc_env)
+
+    eps = 1e-5
+    rng = np.random.default_rng(42)
+    for _ in range(5):
+        i, j = rng.integers(0, shape[0]), rng.integers(0, shape[1])
+        phi_p, phi_m = phi.copy(), phi.copy()
+        phi_p[i, j] += eps
+        phi_m[i, j] -= eps
+
+        E_p = _forward(input_amp * np.exp(1j * phi_p), sinc_env)
+        E_m = _forward(input_amp * np.exp(1j * phi_m), sinc_env)
+
+        c_p = _cost_function(E_p, target, region, steepness)
+        c_m = _cost_function(E_m, target, region, steepness)
+
+        fd = (c_p - c_m) / (2 * eps)
+        np.testing.assert_allclose(grad[i, j], fd, rtol=0.1, atol=1e-3)
