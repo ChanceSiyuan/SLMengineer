@@ -14,16 +14,23 @@ Usage:
     uv run python scripts/generate_hologram.py --no-plot           # metrics only
     uv run python scripts/generate_hologram.py --save out.png      # custom path
     uv run python scripts/generate_hologram.py --jax               # JAX backend
+    uv run python scripts/generate_hologram.py --lbfgsb            # L-BFGS-B backend
+    uv run python scripts/generate_hologram.py --gs-iters 100      # GS seeding
+    uv run python scripts/generate_hologram.py --sigma 2.0         # override beam sigma
+    uv run python scripts/generate_hologram.py --n-slm 256 --pad 1 # custom grid
 """
 
 import argparse
 import time
+from dataclasses import replace
 
 import matplotlib.pyplot as plt
 import numpy as np
 
 from slm.beams import gaussian_beam
 from slm.cgm import CGMConfig, cgm
+from slm.cgm_lbfgsb import cgm_lbfgsb
+from slm.hybrid import gs_seed_phase
 from slm.propagation import pad_field
 from slm.targets import (
     chicken_egg_pattern,
@@ -182,11 +189,12 @@ def mm_to_px(sigma_mm: float) -> float:
     return sigma_mm / PIXEL_PITCH_MM
 
 
-def output_center(n_pad: int = N_PAD) -> tuple[float, float]:
+def output_center(n_pad: int | None = None) -> tuple[float, float]:
     """Compute where the initial phase (D=-pi/2, theta=pi/4) directs light."""
-    D, theta = -np.pi / 2, np.pi / 4
-    center = (n_pad - 1) / 2.0
-    shift = D * np.cos(theta) * n_pad / (2 * np.pi)
+    n = n_pad if n_pad is not None else N_PAD
+    _defaults = CGMConfig()
+    center = (n - 1) / 2.0
+    shift = _defaults.D * np.cos(_defaults.theta) * n / (2 * np.pi)
     return (center + shift, center + shift)
 
 
@@ -203,11 +211,14 @@ def flat_region_metrics(
     axis: str = "col",
 ) -> tuple[float, float, float]:
     """Compute I_rms(%), I_pk-pk(%), phi_rms(rad) along the flat direction."""
-    cy, cx = int(center[0]), int(center[1])
+    ny, nx = output_field.shape
+    cy = min(max(int(center[0]), 0), ny - 1)
+    cx = min(max(int(center[1]), 0), nx - 1)
+    hi = half_width - margin
     if axis == "col":
-        sl = (cy, slice(cx - half_width + margin, cx + half_width - margin))
+        sl = (cy, slice(max(0, cx - hi), min(nx, cx + hi)))
     else:
-        sl = (slice(cy - half_width + margin, cy + half_width - margin), cx)
+        sl = (slice(max(0, cy - hi), min(ny, cy + hi)), cx)
 
     I_flat = np.abs(output_field[sl]) ** 2
     I_mean = np.mean(I_flat)
@@ -245,9 +256,17 @@ def run_patterns(
     pattern_names: list[str],
     max_iter: int = 300,
     use_jax: bool = False,
+    use_lbfgsb: bool = False,
+    gs_iters: int = 0,
+    sigma_override: float | None = None,
+    eta_min_override: float | None = None,
+    steepness_override: int | None = None,
 ) -> dict:
     """Run CGM on selected patterns, print metrics table, return results."""
-    if use_jax:
+    if use_lbfgsb:
+        optimizer = cgm_lbfgsb
+        print("(using L-BFGS-B)")
+    elif use_jax:
         from slm.cgm_jax import cgm_jax as optimizer
         print("(using JAX autograd + scipy CG)")
     else:
@@ -265,25 +284,37 @@ def run_patterns(
     print("-" * len(hdr))
 
     results = {}
+    inputs = {}
+    targets = {}
     for name in pattern_names:
         cfg = PATTERNS[name]
         target = cfg["target_fn"](shape, center)
-        input_amp = make_padded_input(mm_to_px(cfg["sigma_mm"]))
+        targets[name] = target
+        sigma_mm = sigma_override if sigma_override is not None else cfg["sigma_mm"]
+        input_amp = make_padded_input(mm_to_px(sigma_mm))
         region = measure_region(shape, target, margin=5)
+
+        eta_min = eta_min_override if eta_min_override is not None else cfg.get("eta_min", 0.0)
+        steepness = steepness_override if steepness_override is not None else 9
 
         config = CGMConfig(
             max_iterations=max_iter,
-            steepness=9,
+            steepness=steepness,
             R=cfg["R_mrad"] * 1e-3,
             D=-np.pi / 2,
             theta=np.pi / 4,
-            eta_min=cfg.get("eta_min", 0.0),
+            eta_min=eta_min,
         )
+
+        if gs_iters > 0:
+            seed = gs_seed_phase(input_amp, target, gs_iters)
+            config = replace(config, initial_phase=seed)
 
         t0 = time.time()
         result = optimizer(input_amp, target, region, config)
         dt = time.time() - t0
         results[name] = result
+        inputs[name] = input_amp
 
         one_minus_F = 1.0 - result.final_fidelity
         eta = result.final_efficiency * 100
@@ -321,39 +352,73 @@ def run_patterns(
                 f"{pv['eps_phi']:>10.4f} {nu}"
             )
 
-    return results
+    return results, inputs, targets
 
 
-def plot_mosaic(results: dict, save_path: str = "hologram_output.png"):
-    """Plot normalised intensity (colour) and phase (grey) for each pattern."""
+def plot_mosaic(results: dict, inputs: dict, targets: dict,
+               save_path: str = "hologram_output.png"):
+    """Plot target, output intensity, input beam, output phase, convergence."""
     center = output_center()
     n = len(results)
-    fig, axes = plt.subplots(n, 2, figsize=(6, 3 * n))
+    fig, axes = plt.subplots(n, 5, figsize=(20, 3.5 * n))
     if n == 1:
         axes = axes.reshape(1, -1)
 
     for i, (name, result) in enumerate(results.items()):
-        roi = PATTERNS[name]["ROI_px"]
+        n_grid = result.output_field.shape[0]
+        roi = min(PATTERNS[name]["ROI_px"], n_grid)
         r = roi // 2
-        cy, cx = int(center[0]), int(center[1])
-        rs = slice(max(0, cy - r), min(N_PAD, cy + r))
-        cs = slice(max(0, cx - r), min(N_PAD, cx + r))
+        cy = min(max(int(center[0]), r), n_grid - r)
+        cx = min(max(int(center[1]), r), n_grid - r)
+        rs = slice(cy - r, cy + r)
+        cs = slice(cx - r, cx + r)
 
-        field = result.output_field[rs, cs]
-        intensity = np.abs(field) ** 2
-        phase = np.angle(field)
+        target = targets[name]
 
-        axes[i, 0].imshow(intensity, cmap="hot", aspect="equal")
-        axes[i, 0].set_title(f"{name} — Intensity", fontsize=9)
+        # Target intensity
+        axes[i, 0].imshow(np.abs(target[rs, cs]) ** 2, cmap="hot", aspect="equal")
+        axes[i, 0].set_title(f"{name} — Target", fontsize=9)
         axes[i, 0].set_xticks([])
         axes[i, 0].set_yticks([])
 
-        axes[i, 1].imshow(phase, cmap="twilight", vmin=-np.pi, vmax=np.pi, aspect="equal")
-        axes[i, 1].set_title(f"{name} — Phase", fontsize=9)
+        # Output intensity
+        field = result.output_field[rs, cs]
+        axes[i, 1].imshow(np.abs(field) ** 2, cmap="hot", aspect="equal")
+        axes[i, 1].set_title("Output Intensity", fontsize=9)
         axes[i, 1].set_xticks([])
         axes[i, 1].set_yticks([])
 
-    fig.suptitle("CGM Output: Normalised Intensity and Phase", fontsize=12)
+        # Input beam
+        input_amp = inputs[name]
+        axes[i, 2].imshow(np.abs(input_amp) ** 2, cmap="viridis", aspect="equal")
+        axes[i, 2].set_title("Input Beam (SLM)", fontsize=9)
+        axes[i, 2].set_xticks([])
+        axes[i, 2].set_yticks([])
+
+        # Output phase
+        phase = np.angle(field)
+        amp = np.abs(field)
+        threshold = 0.01 * np.max(amp) if np.max(amp) > 0 else 1.0
+        phase_masked = np.where(amp > threshold, phase, np.nan)
+        im = axes[i, 3].imshow(phase_masked, cmap="twilight", vmin=-np.pi, vmax=np.pi, aspect="equal")
+        axes[i, 3].set_title("Output Phase", fontsize=9)
+        axes[i, 3].set_xticks([])
+        axes[i, 3].set_yticks([])
+        cbar = fig.colorbar(im, ax=axes[i, 3], fraction=0.046, pad=0.04)
+        cbar.set_ticks([-np.pi, 0, np.pi])
+        cbar.set_ticklabels(["-\u03c0", "0", "\u03c0"])
+
+        # Convergence
+        if result.cost_history:
+            axes[i, 4].semilogy(result.cost_history)
+            axes[i, 4].set_title("Convergence", fontsize=9)
+            axes[i, 4].set_xlabel("Eval")
+            axes[i, 4].set_ylabel("Cost")
+        else:
+            axes[i, 4].text(0.5, 0.5, "No data", ha="center", va="center", transform=axes[i, 4].transAxes)
+            axes[i, 4].set_title("Convergence", fontsize=9)
+
+    fig.suptitle("CGM Hologram Output", fontsize=12)
     fig.tight_layout()
     fig.savefig(save_path, dpi=150, bbox_inches="tight")
     print(f"\nSaved {save_path}")
@@ -406,6 +471,34 @@ examples:
         "--jax", action="store_true",
         help="Use JAX autograd + scipy CG backend",
     )
+    parser.add_argument(
+        "--lbfgsb", action="store_true",
+        help="Use L-BFGS-B optimizer (recommended for top-hat/continuous patterns)",
+    )
+    parser.add_argument(
+        "--gs-iters", type=int, default=0,
+        help="GS seeding iterations before CGM (default: 0 = no seeding)",
+    )
+    parser.add_argument(
+        "--sigma", type=float, default=None,
+        help="Override input beam sigma (mm) for all patterns",
+    )
+    parser.add_argument(
+        "--eta-min", type=float, default=None,
+        help="Override efficiency floor for all patterns",
+    )
+    parser.add_argument(
+        "--steepness", type=int, default=None,
+        help="Override steepness parameter d (default: 9)",
+    )
+    parser.add_argument(
+        "--n-slm", type=int, default=None,
+        help="Override SLM resolution (default: 1024)",
+    )
+    parser.add_argument(
+        "--pad", type=int, default=None,
+        help="Override pad factor (default: 2)",
+    )
     args = parser.parse_args()
 
     if args.list:
@@ -430,10 +523,26 @@ examples:
     if args.fast:
         print("*** FAST MODE ***")
 
-    results = run_patterns(names, max_iter=max_iter, use_jax=args.jax)
+    # Apply grid overrides
+    global N_SLM, N_PAD
+    if args.n_slm is not None:
+        N_SLM = args.n_slm
+    if args.pad is not None:
+        N_PAD = N_SLM * args.pad
+    elif args.n_slm is not None:
+        N_PAD = N_SLM * 2
+
+    results, inputs, targets = run_patterns(
+        names, max_iter=max_iter,
+        use_jax=args.jax, use_lbfgsb=args.lbfgsb,
+        gs_iters=args.gs_iters,
+        sigma_override=args.sigma,
+        eta_min_override=args.eta_min,
+        steepness_override=args.steepness,
+    )
 
     if not args.no_plot:
-        plot_mosaic(results, save_path=args.save)
+        plot_mosaic(results, inputs, targets, save_path=args.save)
 
 
 if __name__ == "__main__":

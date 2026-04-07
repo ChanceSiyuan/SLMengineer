@@ -112,7 +112,7 @@ def multistart_cgm(
     if seed_mode not in ("gs", "random", "both"):
         raise ValueError(f"seed_mode must be 'gs', 'random', or 'both', got {seed_mode!r}")
 
-    results: list[CGMResult] = []
+    best: CGMResult | None = None
 
     for k in range(n_starts):
         child_rng = np.random.default_rng(rng.integers(0, 2**63))
@@ -127,7 +127,6 @@ def multistart_cgm(
 
         else:  # "both"
             if k == 0:
-                # Analytical guess (default CGM behavior)
                 run_config = replace(config, initial_phase=None)
             elif k == 1:
                 seed = gs_seed_phase(input_amplitude, target_field, n_gs_iterations, child_rng)
@@ -136,8 +135,10 @@ def multistart_cgm(
                 seed = child_rng.uniform(-np.pi, np.pi, size=input_amplitude.shape)
                 run_config = replace(config, initial_phase=seed)
 
-        results.append(
-            cgm(input_amplitude, target_field, measure_region, run_config, callback)
-        )
+        result = cgm(input_amplitude, target_field, measure_region, run_config, callback)
+        if best is None or result.final_fidelity > best.final_fidelity:
+            best = result
 
-    return max(results, key=lambda r: r.final_fidelity)
+    if best is None:
+        raise ValueError("multistart_cgm: n_starts must be >= 1")
+    return best

@@ -5,6 +5,8 @@ Goal: beat Bowman et al. on BOTH metrics: 1-F < 1.8e-4 AND η > 11.3%.
 
 import time
 
+import numpy as np
+
 from slm.beams import gaussian_beam
 from slm.cgm import CGMConfig
 from slm.cgm_lbfgsb import cgm_lbfgsb
@@ -14,10 +16,17 @@ from slm.targets import measure_region, top_hat
 slm_shape = (256, 256)
 fft_shape = (512, 512)
 
+# Target center must match the initial phase's diagonal offset
+_defaults = CGMConfig()
+center_offset = _defaults.D * np.cos(_defaults.theta) * fft_shape[0] / (2 * np.pi)
+center_px = (fft_shape[0] - 1) / 2.0
+center = (center_px + center_offset, center_px + center_offset)
+
 sigmas = [40, 50, 60, 70, 80, 100]
 radii = [30, 40, 50, 60, 70, 80, 100]
 
 print("=== Padded Top-Hat Sweep: 256x256 SLM → 512x512 FFT ===")
+print(f"  Center: ({center[0]:.1f}, {center[1]:.1f})")
 print(f"{'σ':>5} {'r':>5} {'1-F':>12} {'η':>10} {'beat?':>6} {'time':>8}")
 print("-" * 52)
 
@@ -28,7 +37,7 @@ for sigma in sigmas:
     input_amp = pad_field(slm_amp, fft_shape)
 
     for radius in radii:
-        target = top_hat(fft_shape, radius=float(radius))
+        target = top_hat(fft_shape, radius=float(radius), center=center)
         region = measure_region(fft_shape, target, margin=5)
         config = CGMConfig(max_iterations=2000, steepness=9, R=4.5e-3)
 
