@@ -31,6 +31,7 @@ from slm.targets import (
     measure_region,
     rectangular_grid,
     ring_lattice_vortex,
+    SLM_cgm_class,
     spot_array,
     square_lattice_vortex,
     top_hat,
@@ -57,15 +58,9 @@ try:
     )
 except ImportError:
     pass
-from slm.cgm import cgm, CGMConfig, CGMResult, tophat_phase_generate
-from slm.cgm_lbfgsb import cgm_lbfgsb
+from slm.cgm import CGM_phase_generate, cgm, CGMConfig, CGMResult, tophat_phase_generate
 from slm.hybrid import gs_seed_phase
 from slm.device import SLMDevice
-
-try:
-    from slm.cgm_jax import cgm_jax
-except ImportError:
-    pass
 
 from slm.camera import CameraInterface, SimulatedCamera, takeda_phase_retrieval
 
@@ -139,6 +134,7 @@ __all__ = [
     "plot_target_field",
     "rectangular_grid",
     "ring_lattice_vortex",
+    "SLM_cgm_class",
     "spot_array",
     "square_lattice_vortex",
     "top_hat",
@@ -157,9 +153,8 @@ __all__ = [
     "cgm",
     "CGMConfig",
     "CGMResult",
-    "cgm_lbfgsb",
+    "CGM_phase_generate",
     "tophat_phase_generate",
-    "cgm_jax",
     "gs_seed_phase",
     "SLMDevice",
     # camera

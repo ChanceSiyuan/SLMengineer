@@ -14,6 +14,35 @@ from slm.aberration import Zernike
 
 
 class SLM_class():  #用于生成输入输出振幅分布
+    """Unified SLM target and phase generator.
+
+    Holds hardware configuration (from ``hamamatsu_test_config.json``),
+    generates focal-plane targets, and converts optimised phase maps into
+    SLM-sized screens.  All target-producing methods return complex-valued
+    arrays (``np.complex128``) so a single target can feed both WGS and
+    CGM.  Spot-array targets have real-positive amplitude and zero phase.
+
+    Target-method compatibility:
+
+        Method                          | WGS | CGM
+        --------------------------------|-----|-----
+        target_generate("Rec" | "Tri")  | yes | yes   discrete spots, zero phase
+        RecLattice / triangular_lattice | yes | yes
+        translate/rotate/modify_target  | yes | yes   preserves input dtype
+        top_hat_target                  | no  | yes   continuous flat region
+        gaussian_line_target            | no  | yes   phase gradient is load-bearing
+        light_sheet_target              | no  | yes
+        lg_mode_target                  | no  | yes   vortex phase
+        square_lattice_vortex_target    | no  | yes
+        ring_lattice_vortex_target      | no  | yes
+        graphene_lattice_target         | no  | yes   alternating 0/π phase
+
+    "yes" under WGS means ``WGS_phase_generate`` gives a sensible result
+    (it uses only ``|target|``).  "no" means the target's phase is
+    essential to the pattern and WGS would collapse it to a meaningless
+    intensity-only map.
+    """
+
     def __init__(self):
         with open('hamamatsu_test_config.json','r') as file:
             data = json.load(file)
@@ -135,13 +164,13 @@ class SLM_class():  #用于生成输入输出振幅分布
         
         
         if Lattice_type == 'Rec':
-        
+
             if translate:
                 targetAmp = self.RecLattice(distance, spacing, arraysize, Plot=False,exception=exception)
                 targetAmp = self.translate_targetAmp(targetAmp,Plot=Plot)
                 print('You have translated the target to the image center.')
             else:
-                targetAmp = self.RecLattice(distance, spacing, arraysize, Plot=True,exception=exception)
+                targetAmp = self.RecLattice(distance, spacing, arraysize, Plot=Plot,exception=exception)
                 print(f'You have generated the target with {distance}um distance relative to the center.')
             if rotate:
                 targetAmp = self.rotate_targetAmp(targetAmp,angle,Plot=Plot)
@@ -149,15 +178,15 @@ class SLM_class():  #用于生成输入输出振幅分布
             if modify:
                 targetAmp = self.modify_targetAmp(targetAmp)
                 print('You have modified the target to compensate the diffraction efficiency.')
-                
+
         elif Lattice_type == 'Tri':
-        
+
             if translate:
                 targetAmp = self.triangular_lattice(distance, spacing, arraysize, Plot=False)
                 targetAmp = self.translate_targetAmp(targetAmp,Plot=Plot)
                 print('You have translated the target to the image center.')
             else:
-                targetAmp = self.triangular_lattice(distance, spacing, arraysize, Plot=True)
+                targetAmp = self.triangular_lattice(distance, spacing, arraysize, Plot=Plot)
                 print(f'You have generated the target with {distance}um distance relative to the center.')
             if rotate:
                 targetAmp = self.rotate_targetAmp(targetAmp,angle,Plot=Plot)
@@ -173,7 +202,7 @@ class SLM_class():  #用于生成输入输出振幅分布
     
 
     def RecLattice(self, distance, spacing, arraysize, Plot=False,exception=None):
-        targetAmp = np.zeros((int(self.ImgResY), int(self.ImgResX)))
+        targetAmp = np.zeros((int(self.ImgResY), int(self.ImgResX)), dtype=np.complex128)
         dm = round(distance[0]/self.Focalpitchx)
         dn = round(distance[1]/self.Focalpitchy)
         mcenter = self.ImgResX/2
@@ -216,7 +245,7 @@ class SLM_class():  #用于生成输入输出振幅分布
 
 
     def triangular_lattice(self, distance, spacing, arraysize, Plot=False):
-        targetAmp = np.zeros((int(self.ImgResY), int(self.ImgResX)))
+        targetAmp = np.zeros((int(self.ImgResY), int(self.ImgResX)), dtype=np.complex128)
 
         dm = np.round(distance/np.sqrt(2)/self.Focalpitchx)
         dn = np.round(distance/np.sqrt(2)/self.Focalpitchy)
@@ -476,25 +505,42 @@ class SLM_class():  #用于生成输入输出振幅分布
         '''
         This function receives a measured intensity array. This array is ordered by the following procedure:
         The array starts from the point most closed to the origin, then ordered row by row.
-        Then it will output the corresponding foci amp corresponding to this input intensity array
+        Then it will output the corresponding foci amp corresponding to this input intensity array.
+
+        Camera intensities are real; ``init_targetAmp`` may be real or complex
+        (the magnitude is used to locate spots).
         '''
-        camera_Amp=np.zeros_like(init_targetAmp)
-        camera_Amp[np.where(init_targetAmp>0)]=np.sqrt(camera_intensity_array)
+        init_mag = np.abs(init_targetAmp)
+        camera_Amp = np.zeros_like(init_mag, dtype=np.float64)
+        camera_Amp[np.where(init_mag > 0)] = np.sqrt(camera_intensity_array)
         return camera_Amp
 
 
     def target_adapt(self, init_targetAmp, cameraAmp):
+        '''
+        Adapt a target amplitude from a camera-intensity measurement.
 
-        targetAmp = init_targetAmp/np.sqrt(np.sum(np.square(init_targetAmp)))
-        targetAmpmask = (init_targetAmp>0)*1
-        totalsites = np.count_nonzero(init_targetAmp)
+        Operates in magnitude (measurement) space: ``init_targetAmp`` may be
+        complex but only ``|init_targetAmp|`` is used.  Camera amplitude is
+        always real.
+        '''
+        init_mag = np.abs(init_targetAmp)
+        targetAmp = init_mag / np.sqrt(np.sum(init_mag ** 2))
+        targetAmpmask = (init_mag > 0) * 1
+        totalsites = np.count_nonzero(init_mag)
 
-        cameraInt = np.square(cameraAmp)/np.sum(np.square(cameraAmp))#是否需要开根？
+        cameraInt = np.square(cameraAmp) / np.sum(np.square(cameraAmp))
         cameraInt_avg = np.multiply(np.sum(cameraInt) / totalsites, targetAmpmask)
 
-        targetAmp_adapt = np.multiply(np.sqrt(np.divide(cameraInt_avg, cameraInt, out=np.zeros_like(cameraInt_avg),
-                                            where=cameraInt != 0)), targetAmp)
-        
+        targetAmp_adapt = np.multiply(
+            np.sqrt(np.divide(
+                cameraInt_avg, cameraInt,
+                out=np.zeros_like(cameraInt_avg),
+                where=cameraInt != 0,
+            )),
+            targetAmp,
+        )
+
         return targetAmp_adapt
 
     
@@ -667,6 +713,84 @@ class SLM_class():  #用于生成输入输出振幅分布
         Zernike_screen = np.around((Zernike_Phase+np.pi)/(2*np.pi)*256).astype('uint8')
 
         return Zernike_screen
+
+
+    # ------------------------------------------------------------------
+    # CGM-only complex-target factories
+    # ------------------------------------------------------------------
+    # These wrap the free functions in ``slm.targets`` onto the instance's
+    # (ImgResY, ImgResX) grid.  Each returns a complex128 field whose phase
+    # is load-bearing: WGS would discard the phase and produce a bogus
+    # intensity-only hologram, so these targets are CGM-only.
+
+    def top_hat_target(self, radius, center=None):
+        """CGM-only: circular flat-top target (uniform amplitude, flat phase)."""
+        from slm.targets import top_hat
+        return top_hat((int(self.ImgResY), int(self.ImgResX)), radius=radius, center=center)
+
+    def gaussian_line_target(
+        self, length, width_sigma, angle=0.0, center=None, phase_gradient=0.0,
+    ):
+        """CGM-only: 1D line with Gaussian cross-section and linear phase ramp."""
+        from slm.targets import gaussian_line
+        return gaussian_line(
+            (int(self.ImgResY), int(self.ImgResX)),
+            length=length,
+            width_sigma=width_sigma,
+            angle=angle,
+            center=center,
+            phase_gradient=phase_gradient,
+        )
+
+    def light_sheet_target(
+        self, flat_width, gaussian_sigma, angle=0.0, center=None, edge_sigma=0.0,
+    ):
+        """CGM-only: 1D top-hat (Rydberg light sheet) with Gaussian perpendicular."""
+        from slm.targets import light_sheet
+        return light_sheet(
+            (int(self.ImgResY), int(self.ImgResX)),
+            flat_width=flat_width,
+            gaussian_sigma=gaussian_sigma,
+            angle=angle,
+            center=center,
+            edge_sigma=edge_sigma,
+        )
+
+    def lg_mode_target(self, ell, p, w0, center=None):
+        """CGM-only: Laguerre-Gaussian mode LG^p_ell with vortex phase."""
+        from slm.targets import lg_mode
+        return lg_mode((int(self.ImgResY), int(self.ImgResX)), ell=ell, p=p, w0=w0, center=center)
+
+    def square_lattice_vortex_target(
+        self, rows, cols, spacing, peak_sigma, ell=1, center=None,
+    ):
+        """CGM-only: square grid of Gaussian peaks with global vortex phase."""
+        from slm.targets import square_lattice_vortex
+        return square_lattice_vortex(
+            (int(self.ImgResY), int(self.ImgResX)),
+            rows=rows, cols=cols, spacing=spacing, peak_sigma=peak_sigma,
+            ell=ell, center=center,
+        )
+
+    def ring_lattice_vortex_target(
+        self, n_sites, ring_radius, peak_sigma, ell=1, center=None,
+    ):
+        """CGM-only: ring of Gaussian peaks with global vortex phase."""
+        from slm.targets import ring_lattice_vortex
+        return ring_lattice_vortex(
+            (int(self.ImgResY), int(self.ImgResX)),
+            n_sites=n_sites, ring_radius=ring_radius, peak_sigma=peak_sigma,
+            ell=ell, center=center,
+        )
+
+    def graphene_lattice_target(self, rows, cols, spacing, peak_sigma, center=None):
+        """CGM-only: honeycomb lattice with alternating 0/π phase on sublattices."""
+        from slm.targets import graphene_lattice
+        return graphene_lattice(
+            (int(self.ImgResY), int(self.ImgResX)),
+            rows=rows, cols=cols, spacing=spacing, peak_sigma=peak_sigma,
+            center=center,
+        )
 
 
 

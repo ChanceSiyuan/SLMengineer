@@ -31,9 +31,10 @@ def test_image_init_shapes(slm_instance):
 
 
 def test_target_generate_rec_spot_count(slm_instance):
-    """2x2 rectangular target has 4 nonzero spots."""
+    """2x2 rectangular target has 4 nonzero spots and is complex-valued."""
     target = slm_instance.target_generate("Rec", arraysize=[2, 2], translate=False, Plot=False)
     assert target.shape == (64, 64)
+    assert target.dtype == np.complex128
     assert np.count_nonzero(target) == 4
 
 

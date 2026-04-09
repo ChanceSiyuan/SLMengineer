@@ -5,6 +5,30 @@ from __future__ import annotations
 import numpy as np
 from scipy.special import assoc_laguerre
 
+from slm.generation import SLM_class
+
+
+class SLM_cgm_class(SLM_class):
+    """Deprecated alias for :class:`slm.generation.SLM_class`.
+
+    Since the unification in issue #13, ``SLM_class`` itself produces
+    complex-valued targets and exposes the CGM-only factory methods
+    (``top_hat_target``, ``lg_mode_target``, etc.).  ``SLM_cgm_class``
+    is kept as a thin alias for backwards compatibility and emits a
+    :class:`DeprecationWarning` on instantiation.
+    """
+
+    def __init__(self, *args, **kwargs):
+        import warnings
+
+        warnings.warn(
+            "SLM_cgm_class is deprecated; use SLM_class directly — its "
+            "target methods now return np.complex128 arrays.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        super().__init__(*args, **kwargs)
+
 
 def spot_array(
     shape: tuple[int, int],

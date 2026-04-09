@@ -1,4 +1,4 @@
-"""Hologram Generator — target pattern -> GS-seeded L-BFGS-B optimisation -> results."""
+"""Hologram Generator — target pattern -> GS-seeded CGM (torch/CUDA) -> results."""
 
 import io
 import sys
@@ -14,8 +14,7 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parents[1].parent / "src"))
 
 from slm.beams import gaussian_beam
-from slm.cgm import CGMConfig
-from slm.cgm_lbfgsb import cgm_lbfgsb
+from slm.cgm import CGMConfig, cgm
 from slm.device import SLMDevice
 from slm.hybrid import gs_seed_phase
 from slm.propagation import pad_field
@@ -298,8 +297,7 @@ reproduce_cmd = (
     f"import matplotlib.pyplot as plt; import numpy as np; "
     f"from dataclasses import replace; "
     f"from slm.beams import gaussian_beam; "
-    f"from slm.cgm import CGMConfig; "
-    f"from slm.cgm_lbfgsb import cgm_lbfgsb; "
+    f"from slm.cgm import CGMConfig, cgm; "
     f"from slm.hybrid import gs_seed_phase; "
     f"from slm.propagation import pad_field; "
     f"from slm.targets import measure_region, {pat['key']}; "
@@ -309,7 +307,7 @@ reproduce_cmd = (
     f"c=CGMConfig(max_iterations={max_iters},steepness={steepness},"
     f"R={R_mrad*1e-3},eta_min={eta_min}); "
     f"{_gs_snippet}"
-    f"res=cgm_lbfgsb(a,t,r,c); "
+    f"res=cgm(a,t,r,c); "
     f"print(f'1-F={{1-res.final_fidelity:.2e}} eta={{res.final_efficiency:.4f}}'); "
     f"E=res.output_field; ph=np.where(np.abs(E)>0.01*np.max(np.abs(E)),np.angle(E),np.nan); "
     f"fig,ax=plt.subplots(1,4,figsize=(16,3.5)); "
@@ -359,10 +357,10 @@ if run_clicked:
         config = replace(config, initial_phase=seed_phase)
 
     with st.spinner(
-        f"Running L-BFGS-B ({max_iters} iterations on {n_pad}\u00d7{n_pad} grid)..."
+        f"Running CGM ({max_iters} iterations on {n_pad}\u00d7{n_pad} grid)..."
     ):
         t0 = time.time()
-        cgm_result = cgm_lbfgsb(input_amp, target, region, config)
+        cgm_result = cgm(input_amp, target, region, config)
         dt = time.time() - t0
 
     st.session_state["result"] = cgm_result
