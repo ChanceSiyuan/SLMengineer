@@ -6,12 +6,11 @@ interference patterns.
 
 Camera implementations:
   - SimulatedCamera: FFT-based simulation for testing.
-  - HardwareCamera: Real SLM display + physical camera capture.
+  - VimbaCamera: Allied Vision camera (re-exported from hardware).
 """
 
 from __future__ import annotations
 
-import time
 from typing import Protocol
 
 import numpy as np
@@ -99,111 +98,6 @@ class SimulatedCamera:
         return self._add_noise(fringe)
 
 
-class HardwareCamera:
-    """Real-hardware camera: displays phase on SLM, captures via physical camera.
-
-    Wraps the full display-and-capture pipeline behind :class:`CameraInterface`
-    so that :func:`~slm.feedback.experimental_feedback_loop` and any other
-    code expecting a camera object works transparently with real hardware.
-
-    The ``capture_intensity(slm_phase)`` method:
-      1. Converts ``slm_phase`` (float64, [-pi, pi]) to a uint8 screen.
-      2. Optionally composites a Fresnel lens via modular addition.
-      3. Applies LUT / manufacturer calibration correction.
-      4. Displays on the SLM and waits for the panel to settle.
-      5. Captures a frame from the physical camera.
-      6. Returns the image as a float64 intensity array.
-
-    Parameters
-    ----------
-    slm_display : object with ``update_array(array)`` method
-        (e.g. :class:`~slm.hardware.slm_display.SLMDisplay`).
-    camera : object with ``capture(exposure_time_us)`` method
-        (e.g. :class:`~slm.hardware.vimba_camera.VimbaCamera`).
-    slm_resolution : (width, height) of the physical SLM in pixels.
-    exposure_time_us : camera exposure time in microseconds.
-    settle_time_s : seconds to wait after displaying before capturing.
-    lut_value : LUT scaling factor for phase correction (0-255).
-    calibration : per-pixel correction array (uint8) from manufacturer BMP.
-    fresnel_screen : optional precomputed Fresnel lens screen (uint8).
-    """
-
-    def __init__(
-        self,
-        slm_display,
-        camera,
-        slm_resolution: tuple[int, int] = (1272, 1024),
-        exposure_time_us: float = 30.0,
-        settle_time_s: float = 0.35,
-        lut_value: int = 207,
-        calibration: np.ndarray | None = None,
-        fresnel_screen: np.ndarray | None = None,
-    ) -> None:
-        self._display = slm_display
-        self._camera = camera
-        self._slm_resolution = slm_resolution
-        self._exposure_time_us = exposure_time_us
-        self._settle_time_s = settle_time_s
-        self._lut_value = lut_value
-        self._calibration = calibration
-        self._fresnel_screen = fresnel_screen
-
-    @classmethod
-    def from_config(cls, slm_display, camera, config) -> HardwareCamera:
-        """Construct from a :class:`~slm.hardware.config.HardwareConfig`.
-
-        Automatically loads the calibration BMP if ``config.calibration_bmp_path``
-        is set.
-        """
-        from slm.hardware.lut import load_calibration_bmp
-
-        calibration = None
-        if config.calibration_bmp_path:
-            calibration = load_calibration_bmp(config.calibration_bmp_path)
-
-        return cls(
-            slm_display=slm_display,
-            camera=camera,
-            slm_resolution=config.slm_resolution,
-            exposure_time_us=config.exposure_time_us,
-            settle_time_s=config.display_settle_time_s,
-            lut_value=config.lut_value,
-            calibration=calibration,
-        )
-
-    def _prepare_screen(self, slm_phase: np.ndarray) -> np.ndarray:
-        """Convert algorithm phase to a corrected uint8 screen."""
-        from slm.hardware.fresnel import combine_screens
-        from slm.hardware.lut import apply_lut_correction
-        from slm.hardware.phase_convert import phase_to_screen
-
-        screen = phase_to_screen(slm_phase, self._slm_resolution)
-
-        if self._fresnel_screen is not None:
-            screen = combine_screens(screen, self._fresnel_screen)
-
-        screen = apply_lut_correction(
-            screen, self._lut_value, self._calibration
-        )
-        return screen
-
-    def capture_intensity(self, slm_phase: np.ndarray) -> np.ndarray:
-        """Display *slm_phase* on the SLM and return focal-plane intensity."""
-        screen = self._prepare_screen(slm_phase)
-        self._display.update_array(screen)
-        time.sleep(self._settle_time_s)
-        raw = self._camera.capture(self._exposure_time_us)
-        return raw.astype(np.float64)
-
-    def capture_fringes(self, slm_phase: np.ndarray) -> np.ndarray:
-        """Display *slm_phase* and return interference fringe image.
-
-        Requires a physical reference beam. Without one, this returns
-        the same as ``capture_intensity`` (direct intensity image).
-        """
-        return self.capture_intensity(slm_phase)
-
-
 def takeda_phase_retrieval(
     fringe_image: np.ndarray,
     carrier_freq: tuple[float, float] | None = None,
@@ -263,3 +157,11 @@ def takeda_phase_retrieval(
     x = np.arange(nx).reshape(1, -1)
     demod = np.exp(-2j * np.pi * (fy_det * y + fx_det * x))
     return np.angle(field * demod)
+
+
+# Re-export VimbaCamera from hardware module for compatibility with
+# slm-code scripts that do `from slm.camera import VimbaCamera`
+try:
+    from slm.hardware.vimba_camera import VimbaCamera  # noqa: F401
+except ImportError:
+    pass

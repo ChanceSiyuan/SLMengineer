@@ -14,10 +14,12 @@ dependencies = [
 [project.optional-dependencies]
 app = ["streamlit>=1.30"]
 jax = ["jax>=0.4", "jaxlib>=0.4"]
+gpu = ["torch>=2.0"]
 hardware = [
     "wxPython>=4.2",
     "vmbpy",
     "Pillow>=9.0",
+    "zernike",
 ]
 dev = [
     "pytest>=8.0",

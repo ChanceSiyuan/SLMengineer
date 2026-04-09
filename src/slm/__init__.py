@@ -44,8 +44,20 @@ from slm.metrics import (
     uniformity,
 )
 from slm.gs import gs, GSResult
-from slm.wgs import wgs, phase_fixed_wgs, WGSConfig, WGSResult
-from slm.cgm import cgm, CGMConfig, CGMResult
+from slm.wgs import phase_fixed_wgs, WGSConfig, WGSResult  # noqa: F401
+# Note: the `wgs` function is NOT re-exported here to avoid shadowing the
+# `slm.wgs` module.  Import it directly: `from slm.wgs import wgs`
+
+try:
+    from slm.wgs import (
+        WGS_phase_generate,
+        WGS3D_phase_generate,
+        fresnel_lens_phase_generate as wgs_fresnel_lens_phase_generate,
+        nonUniformity_adapt,
+    )
+except ImportError:
+    pass
+from slm.cgm import cgm, CGMConfig, CGMResult, tophat_phase_generate
 from slm.cgm_lbfgsb import cgm_lbfgsb
 from slm.hybrid import gs_seed_phase
 from slm.device import SLMDevice
@@ -55,7 +67,19 @@ try:
 except ImportError:
     pass
 
-from slm.camera import CameraInterface, HardwareCamera, SimulatedCamera, takeda_phase_retrieval
+from slm.camera import CameraInterface, SimulatedCamera, takeda_phase_retrieval
+
+try:
+    from slm.camera import VimbaCamera
+except ImportError:
+    pass
+
+try:
+    from slm.generation import SLM_class
+    from slm.aberration import Zernike
+    from slm.imgpy import IMG, Tweezer, SLM_screen_Correct
+except ImportError:
+    pass
 
 try:
     from slm.hardware import (
@@ -127,7 +151,6 @@ __all__ = [
     # algorithms
     "gs",
     "GSResult",
-    "wgs",
     "phase_fixed_wgs",
     "WGSConfig",
     "WGSResult",
@@ -135,12 +158,12 @@ __all__ = [
     "CGMConfig",
     "CGMResult",
     "cgm_lbfgsb",
+    "tophat_phase_generate",
     "cgm_jax",
     "gs_seed_phase",
     "SLMDevice",
     # camera
     "CameraInterface",
-    "HardwareCamera",
     "SimulatedCamera",
     "takeda_phase_retrieval",
     # hardware utilities
@@ -165,4 +188,16 @@ __all__ = [
     "zernike",
     "zernike_decompose",
     "zernike_from_noll",
+    # PyTorch WGS (from slm-code)
+    "WGS_phase_generate",
+    "WGS3D_phase_generate",
+    "wgs_fresnel_lens_phase_generate",
+    "nonUniformity_adapt",
+    # slm-code hardware modules
+    "VimbaCamera",
+    "SLM_class",
+    "Zernike",
+    "IMG",
+    "Tweezer",
+    "SLM_screen_Correct",
 ]

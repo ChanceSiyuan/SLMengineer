@@ -480,3 +480,60 @@ def cgm(
         n_iters,
         fidelity_history,
     )
+
+
+def tophat_phase_generate(
+    initSLMAmp: np.ndarray,
+    shape: tuple[int, int] | None = None,
+    radius: float = 50.0,
+    center: tuple[float, float] | None = None,
+    max_iterations: int = 300,
+    steepness: int = 9,
+    initial_phase: np.ndarray | None = None,
+    Plot: bool = False,
+) -> np.ndarray:
+    """One-line top-hat phase generation via CGM.
+
+    Parameters
+    ----------
+    initSLMAmp : 2D array — incident beam amplitude on SLM plane.
+    shape : grid size (ny, nx). Defaults to initSLMAmp.shape.
+    radius : top-hat radius in focal-plane pixels.
+    center : (row, col) of top-hat center; defaults to grid center.
+    max_iterations : CGM iterations (300 typical).
+    steepness : cost exponent (10^steepness).
+    initial_phase : optional starting phase (e.g. with Fresnel lens baked in).
+    Plot : if True, print convergence summary.
+
+    Returns
+    -------
+    SLM phase array (float64, same shape as initSLMAmp).
+    """
+    from slm.targets import measure_region as make_region
+    from slm.targets import top_hat
+
+    if shape is None:
+        shape = initSLMAmp.shape
+
+    target = top_hat(shape, radius=radius, center=center)
+    region = make_region(shape, target, margin=5)
+
+    config = CGMConfig(
+        max_iterations=max_iterations,
+        steepness=steepness,
+        R=0.0,
+        D=0.0,
+        theta=0.0,
+        eta_min=0.05,
+        initial_phase=initial_phase,
+    )
+
+    result = cgm(initSLMAmp, target, region, config)
+
+    if Plot:
+        print(f"CGM top-hat: {result.n_iterations} iter, "
+              f"F={result.final_fidelity:.4f}, "
+              f"η={result.final_efficiency:.4f}, "
+              f"ε_ν={result.final_non_uniformity:.4f}")
+
+    return result.slm_phase
