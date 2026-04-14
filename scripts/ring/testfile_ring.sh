@@ -1,11 +1,12 @@
 #!/bin/bash
-# testfile_sheet.sh — local CGM -> push to Windows -> run hardware -> pull results
+# testfile_ring.sh — local CGM -> push to Windows -> run hardware -> pull results
 #
-# Parallel to testfile_lg.sh for the light_sheet_target shape.  Pipeline:
-#   [1/4] Local:  uv run python scripts/testfile_sheet.py
-#                 -> produces scripts/testfile_sheet_payload.npz
-#                             scripts/testfile_sheet_params.json
-#                             scripts/testfile_sheet_preview.pdf
+# Parallel to testfile_lg.sh for the ring_lattice_vortex_target shape.
+# Pipeline:
+#   [1/4] Local:  uv run python scripts/ring/testfile_ring.py
+#                 -> produces scripts/ring/testfile_ring_payload.npz
+#                             scripts/ring/testfile_ring_params.json
+#                             scripts/ring/testfile_ring_preview.pdf
 #   [2/4] Push:   scp payload + params to C:\Users\Galileo\slm_runner\incoming\
 #   [3/4] Remote: ssh triggers runner.py on the dedicated Windows runner repo
 #   [4/4] Pull:   scp captured data from the runner's data/ back into ./data/
@@ -21,16 +22,16 @@ WIN_PYTHON="C:\\Users\\Galileo\\SLMengineer\\.venv\\Scripts\\python.exe"
 SSH_CMD="ssh -p ${PORT} ${USER}@${SERVER_IP}"
 SCP_CMD="scp -P ${PORT}"
 
-PREFIX="testfile_sheet"
-PAYLOAD="scripts/${PREFIX}_payload.npz"
-PARAMS="scripts/${PREFIX}_params.json"
+PREFIX="testfile_ring"
+PAYLOAD="scripts/ring/${PREFIX}_payload.npz"
+PARAMS="scripts/ring/${PREFIX}_params.json"
 
 # ─── Step 1: Local CGM compute ───────────────────────────────────────
 echo "[1/4] Running CGM locally (~100 s on 4096^2 RTX 3090)..."
-uv run python scripts/testfile_sheet.py
+uv run python scripts/ring/testfile_ring.py
 
 if [ ! -f "${PAYLOAD}" ]; then
-    echo "ERROR: ${PAYLOAD} not produced by testfile_sheet.py" >&2
+    echo "ERROR: ${PAYLOAD} not produced by testfile_ring.py" >&2
     exit 1
 fi
 

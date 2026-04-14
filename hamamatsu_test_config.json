@@ -3,7 +3,7 @@
     "SLMRes": [1272, 1024],
     "arraySizeBit": [12, 12],
     "beamwaist": 5100,
-    "focallength": 200000,
+    "focallength": 180000,
 
     "Loop": 25,
     "threshold": 0.01,

@@ -88,7 +88,7 @@ class SLM_class():  #用于生成输入输出振幅分布
     #     self.slm.updateArray(SLM_screen_Corrected)
 
 
-    def image_init(self, initGaussianPhase_user_defined = None, initGaussianPhase_save = False, Plot = True):
+    def image_init(self, initGaussianPhase_user_defined = None, initGaussianPhase_save = False, Plot = True, beam_center_um = (0.0, 0.0)):
         self.arraySizeBitx = self.arraySizeBit[0]
         self.arraySizeBity = self.arraySizeBit[1]
         self.ImgResX = 2 ** (int(self.arraySizeBitx))
@@ -96,8 +96,13 @@ class SLM_class():  #用于生成输入输出振幅分布
         self.Xps, self.Yps = np.meshgrid(np.linspace(0, self.ImgResX, self.ImgResX), np.linspace(0, self.ImgResY, self.ImgResY))
         self.Focalpitchx = self.wavelength*self.focallength/self.ImgResX/(self.pixelpitch*self.magnification)#
         self.Focalpitchy = self.wavelength*self.focallength/self.ImgResY/(self.pixelpitch*self.magnification)
-        X = self.Xps*self.pixelpitch-self.ImgResX/2*self.pixelpitch
-        Y = self.Yps*self.pixelpitch-self.ImgResY/2*self.pixelpitch
+        # beam_center_um = (dx, dy): incident-beam center offset from the
+        # SLM compute-grid center, in um.  Used to model off-center
+        # illumination so CGM optimizes against the real input amplitude.
+        self.beam_center_um = tuple(beam_center_um)
+        dx_um, dy_um = self.beam_center_um
+        X = self.Xps*self.pixelpitch-self.ImgResX/2*self.pixelpitch - dx_um
+        Y = self.Yps*self.pixelpitch-self.ImgResY/2*self.pixelpitch - dy_um
 
         initGaussianAmp = np.sqrt(2 / np.pi) / self.beamwaist * np.exp(-(X ** 2 + Y ** 2) / self.beamwaist ** 2)
 

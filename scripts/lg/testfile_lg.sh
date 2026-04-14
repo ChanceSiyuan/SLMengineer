@@ -2,10 +2,10 @@
 # testfile_lg.sh — local CGM -> push to Windows -> run hardware -> pull results
 #
 # Pipeline:
-#   [1/4] Local:  uv run python scripts/testfile_lg.py
-#                 -> produces scripts/testfile_lg_payload.npz
-#                             scripts/testfile_lg_params.json
-#                             scripts/testfile_lg_preview.pdf
+#   [1/4] Local:  uv run python scripts/lg/testfile_lg.py
+#                 -> produces scripts/lg/testfile_lg_payload.npz
+#                             scripts/lg/testfile_lg_params.json
+#                             scripts/lg/testfile_lg_preview.pdf
 #   [2/4] Push:   scp payload + params to C:\Users\Galileo\slm_runner\incoming\
 #   [3/4] Remote: ssh triggers runner.py on the dedicated Windows runner repo
 #                 (which displays the precomputed uint8 screen and captures)
@@ -29,12 +29,12 @@ SSH_CMD="ssh -p ${PORT} ${USER}@${SERVER_IP}"
 SCP_CMD="scp -P ${PORT}"
 
 PREFIX="testfile_lg"
-PAYLOAD="scripts/${PREFIX}_payload.npz"
-PARAMS="scripts/${PREFIX}_params.json"
+PAYLOAD="scripts/lg/${PREFIX}_payload.npz"
+PARAMS="scripts/lg/${PREFIX}_params.json"
 
 # ─── Step 1: Local CGM compute ───────────────────────────────────────
 echo "[1/4] Running CGM locally (~100 s on 4096^2 RTX 3090)..."
-uv run python scripts/testfile_lg.py
+uv run python scripts/lg/testfile_lg.py
 
 if [ ! -f "${PAYLOAD}" ]; then
     echo "ERROR: ${PAYLOAD} not produced by testfile_lg.py" >&2

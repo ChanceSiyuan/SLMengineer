@@ -1,14 +1,14 @@
-"""Local-only CGM compute: produce a light-sheet phase payload for the
+"""Local-only CGM compute: produce a gaussian-line phase payload for the
 dedicated Windows hardware runner.
 
-Parallel to ``scripts/testfile_lg.py`` but targeting a soft-edged 1D
-top-hat via ``SLM.light_sheet_target`` (useful for Rydberg beam
-shaping).  Shared CGM + optics config with the LG01 baseline so the
-per-shape diff on the camera is attributable to the target choice alone.
+Parallel to ``scripts/testfile_lg.py`` but targeting a 1D line with
+Gaussian cross-section via ``SLM.gaussian_line_target``.  Shared CGM +
+optics config with the LG01 baseline so the per-shape diff on the
+camera is attributable to the target choice alone.
 
 Next step after running this script::
 
-    ./scripts/testfile_sheet.sh   # pushes payload + triggers remote runner
+    ./scripts/gline/testfile_gline.sh   # pushes payload + triggers remote runner
 """
 from __future__ import annotations
 
@@ -29,34 +29,34 @@ from slm.targets import mask_from_target
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-PAYLOAD_PATH = "scripts/testfile_sheet_payload.npz"
-PARAMS_PATH = "scripts/testfile_sheet_params.json"
-PREVIEW_PATH = "scripts/testfile_sheet_preview.pdf"
+PAYLOAD_PATH = "scripts/gline/testfile_gline_payload.npz"
+PARAMS_PATH = "scripts/gline/testfile_gline_params.json"
+PREVIEW_PATH = "scripts/gline/testfile_gline_preview.pdf"
 
 
 def main():
     # --- Capture parameters (used later by the Windows runner) ---
-    etime_us = 4000        # 4 ms exposure
+    etime_us = 4000        # 4 ms exposure (kept low to avoid zero-order saturation on camera)
     n_avg = 10             # average 10 frames
     LUT = 207
     fresnel_sd = 1000      # um -- compensates camera-focal-plane offset
 
-    # --- Light-sheet target parameters (1024^2 grid, focal pitch 15.83 um/px) ---
-    # 30 focal-px = 475 um flat-top, sigma=2 = 32 um 1-sigma perpendicular Gaussian.
-    sheet_flat_width = 30.0     # px of uniform flat-top along line (~475 um)
-    sheet_gaussian_sigma = 2.0  # px perpendicular Gaussian (~32 um 1-sigma)
-    sheet_angle = 0.0           # horizontal
-    sheet_edge_sigma = 1.5      # px soft Gaussian taper at ends of the flat region
+    # --- Gaussian-line target parameters (1024^2 grid, focal pitch 15.83 um/px) ---
+    # 30 focal-px = 475 um length on focal plane = 258 camera-px.  sigma=2 = 17 camera-px.
+    gline_length = 30.0         # px along line (~475 um)
+    gline_width_sigma = 2.0     # px perpendicular (~32 um 1-sigma)
+    gline_angle = 0.0           # horizontal
+    gline_phase_gradient = 0.0  # no linear phase ramp
 
     # --- CGM analytical initial phase (issue #12 iteration #4: places target on-camera) ---
     # Paper's Table I values (R=4.5e-3, D=-pi/2, theta=pi/4) on our 4096^2 grid shift
     # the target by ~2865 um off zero-order, OFF the 5617x7444 um camera FOV.  Use the
     # reduced shift that hardware iteration #4 in issue #12 confirmed to land on-camera.
-    cgm_R = 0.0            # no quadratic lensing (R=4.5e-3 caused crescent artifact per issue #12 #1)
+    cgm_R = 0          # no quadratic lensing (R=4.5e-3 caused crescent artifact per issue #12 #1)
     cgm_D = -np.pi / 6     # smaller linear phase offset (~950 um shift, on-camera)
-    cgm_theta = 0.0        # horizontal offset only (keeps target within camera row extent)
+    cgm_theta = - np.pi / 4        # horizontal offset only (keeps target within camera row extent)
     cgm_steepness = 9
-    cgm_max_iterations = 200
+    cgm_max_iterations = 2000
 
     # --- 1. SLM_class setup (reads hamamatsu_test_config.json) ---
     # Override arraySizeBit from default [12,12] (=4096^2) to [10,10] (=1024^2) so the
@@ -79,16 +79,16 @@ def main():
           f"focal pitch = {SLM.Focalpitchx:.3f} um/px")
     print(f"SLM native:   ({H}, {W})")
 
-    # --- 2. Generate light-sheet target on the 1024x1024 computation grid ---
-    targetAmp = SLM.light_sheet_target(
-        flat_width=sheet_flat_width,
-        gaussian_sigma=sheet_gaussian_sigma,
-        angle=sheet_angle,
-        edge_sigma=sheet_edge_sigma,
+    # --- 2. Generate gaussian-line target on the 1024x1024 computation grid ---
+    targetAmp = SLM.gaussian_line_target(
+        length=gline_length,
+        width_sigma=gline_width_sigma,
+        angle=gline_angle,
+        phase_gradient=gline_phase_gradient,
     )
     print(
-        f"\n[TARGET] light sheet: flat_width={sheet_flat_width:.0f}px "
-        f"gauss_sigma={sheet_gaussian_sigma:.0f}px edge_sigma={sheet_edge_sigma:.0f}px "
+        f"\n[TARGET] gaussian line: length={gline_length:.0f}px "
+        f"width_sigma={gline_width_sigma:.0f}px angle={gline_angle:.2f} rad "
         f"dtype={targetAmp.dtype} shape={targetAmp.shape} "
         f"nonzero={np.count_nonzero(targetAmp)}"
     )
@@ -114,7 +114,7 @@ def main():
         torch.from_numpy(targetAmp),
         max_iterations=cgm_max_iterations,
         steepness=cgm_steepness,
-        eta_min=0.05,
+        eta_min=0.1,
         Plot=False,
     )
     cgm_wall_time = time.perf_counter() - t0
@@ -178,12 +178,12 @@ def main():
         "calibration_applied_on_linux": True,
         "calibration_bmp": "calibration/CAL_LSH0905549_1013nm.bmp",
         "LUT": LUT,
-        "target": "light_sheet",
-        "sheet_flat_width_px": sheet_flat_width,
-        "sheet_flat_width_um_focal": round(float(sheet_flat_width * SLM.Focalpitchx), 2),
-        "sheet_gaussian_sigma_px": sheet_gaussian_sigma,
-        "sheet_angle_rad": sheet_angle,
-        "sheet_edge_sigma_px": sheet_edge_sigma,
+        "target": "gaussian_line",
+        "gline_length_px": gline_length,
+        "gline_length_um_focal": round(float(gline_length * SLM.Focalpitchx), 2),
+        "gline_width_sigma_px": gline_width_sigma,
+        "gline_angle_rad": gline_angle,
+        "gline_phase_gradient": gline_phase_gradient,
         "cgm_max_iterations": cgm_max_iterations,
         "cgm_steepness": cgm_steepness,
         "cgm_R": cgm_R,
@@ -213,7 +213,7 @@ def main():
     print("=" * 72)
     print("Payload ready.  Next step (pushes to Windows and runs the experiment):")
     print()
-    print("    ./scripts/testfile_sheet.sh")
+    print("    ./scripts/gline/testfile_gline.sh")
     print()
     print("=" * 72)
 
@@ -228,7 +228,7 @@ def _save_preview(input_amp, target, E_out, region, slm_screen_final, slm_phase_
     axes[0, 0].set_title("Input amplitude |S|\n(Gaussian, 1024 grid)")
 
     axes[0, 1].imshow(np.abs(target) ** 2, cmap="hot")
-    axes[0, 1].set_title("Target |tau|^2\n(light sheet)")
+    axes[0, 1].set_title("Target |tau|^2\n(gaussian line)")
 
     target_phase_masked = np.where(target_mask > 0, np.angle(target), np.nan)
     axes[0, 2].imshow(target_phase_masked, cmap="twilight", vmin=-np.pi, vmax=np.pi)

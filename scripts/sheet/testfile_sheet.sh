@@ -1,11 +1,11 @@
 #!/bin/bash
-# testfile_tophat.sh — local CGM -> push to Windows -> run hardware -> pull results
+# testfile_sheet.sh — local CGM -> push to Windows -> run hardware -> pull results
 #
-# Parallel to testfile_lg.sh for the top_hat_target shape.  Pipeline:
-#   [1/4] Local:  uv run python scripts/testfile_tophat.py
-#                 -> produces scripts/testfile_tophat_payload.npz
-#                             scripts/testfile_tophat_params.json
-#                             scripts/testfile_tophat_preview.pdf
+# Parallel to testfile_lg.sh for the light_sheet_target shape.  Pipeline:
+#   [1/4] Local:  uv run python scripts/sheet/testfile_sheet.py
+#                 -> produces scripts/sheet/testfile_sheet_payload.npz
+#                             scripts/sheet/testfile_sheet_params.json
+#                             scripts/sheet/testfile_sheet_preview.pdf
 #   [2/4] Push:   scp payload + params to C:\Users\Galileo\slm_runner\incoming\
 #   [3/4] Remote: ssh triggers runner.py on the dedicated Windows runner repo
 #   [4/4] Pull:   scp captured data from the runner's data/ back into ./data/
@@ -21,16 +21,16 @@ WIN_PYTHON="C:\\Users\\Galileo\\SLMengineer\\.venv\\Scripts\\python.exe"
 SSH_CMD="ssh -p ${PORT} ${USER}@${SERVER_IP}"
 SCP_CMD="scp -P ${PORT}"
 
-PREFIX="testfile_tophat"
-PAYLOAD="scripts/${PREFIX}_payload.npz"
-PARAMS="scripts/${PREFIX}_params.json"
+PREFIX="testfile_sheet"
+PAYLOAD="scripts/sheet/${PREFIX}_payload.npz"
+PARAMS="scripts/sheet/${PREFIX}_params.json"
 
 # ─── Step 1: Local CGM compute ───────────────────────────────────────
 echo "[1/4] Running CGM locally (~100 s on 4096^2 RTX 3090)..."
-uv run python scripts/testfile_tophat.py
+uv run python scripts/sheet/testfile_sheet.py
 
 if [ ! -f "${PAYLOAD}" ]; then
-    echo "ERROR: ${PAYLOAD} not produced by testfile_tophat.py" >&2
+    echo "ERROR: ${PAYLOAD} not produced by testfile_sheet.py" >&2
     exit 1
 fi
 

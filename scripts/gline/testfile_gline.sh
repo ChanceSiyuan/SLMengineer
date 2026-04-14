@@ -1,12 +1,11 @@
 #!/bin/bash
-# testfile_ring.sh — local CGM -> push to Windows -> run hardware -> pull results
+# testfile_gline.sh — local CGM -> push to Windows -> run hardware -> pull results
 #
-# Parallel to testfile_lg.sh for the ring_lattice_vortex_target shape.
-# Pipeline:
-#   [1/4] Local:  uv run python scripts/testfile_ring.py
-#                 -> produces scripts/testfile_ring_payload.npz
-#                             scripts/testfile_ring_params.json
-#                             scripts/testfile_ring_preview.pdf
+# Parallel to testfile_lg.sh for the gaussian_line_target shape.  Pipeline:
+#   [1/4] Local:  uv run python scripts/gline/testfile_gline.py
+#                 -> produces scripts/gline/testfile_gline_payload.npz
+#                             scripts/gline/testfile_gline_params.json
+#                             scripts/gline/testfile_gline_preview.pdf
 #   [2/4] Push:   scp payload + params to C:\Users\Galileo\slm_runner\incoming\
 #   [3/4] Remote: ssh triggers runner.py on the dedicated Windows runner repo
 #   [4/4] Pull:   scp captured data from the runner's data/ back into ./data/
@@ -22,16 +21,16 @@ WIN_PYTHON="C:\\Users\\Galileo\\SLMengineer\\.venv\\Scripts\\python.exe"
 SSH_CMD="ssh -p ${PORT} ${USER}@${SERVER_IP}"
 SCP_CMD="scp -P ${PORT}"
 
-PREFIX="testfile_ring"
-PAYLOAD="scripts/${PREFIX}_payload.npz"
-PARAMS="scripts/${PREFIX}_params.json"
+PREFIX="testfile_gline"
+PAYLOAD="scripts/gline/${PREFIX}_payload.npz"
+PARAMS="scripts/gline/${PREFIX}_params.json"
 
 # ─── Step 1: Local CGM compute ───────────────────────────────────────
 echo "[1/4] Running CGM locally (~100 s on 4096^2 RTX 3090)..."
-uv run python scripts/testfile_ring.py
+uv run python scripts/gline/testfile_gline.py
 
 if [ ! -f "${PAYLOAD}" ]; then
-    echo "ERROR: ${PAYLOAD} not produced by testfile_ring.py" >&2
+    echo "ERROR: ${PAYLOAD} not produced by testfile_gline.py" >&2
     exit 1
 fi
 
@@ -54,12 +53,12 @@ echo ""
 echo "[4/4] Pulling results into ./data/ ..."
 mkdir -p data
 PULL_FILES=(
-    "${PREFIX}_before.npy"
-    "${PREFIX}_after.npy"
-    "${PREFIX}_diff.npy"
-    "${PREFIX}_before.png"
+    # "${PREFIX}_before.npy"
+    # "${PREFIX}_after.npy"
+    # "${PREFIX}_diff.npy"
+    # "${PREFIX}_before.png"
     "${PREFIX}_after.png"
-    "${PREFIX}_diff.png"
+    # "${PREFIX}_diff.png"
     "${PREFIX}_run.json"
 )
 for f in "${PULL_FILES[@]}"; do

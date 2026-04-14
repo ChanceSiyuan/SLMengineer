@@ -1,14 +1,11 @@
-"""Local-only CGM compute: produce a ring-lattice-vortex phase payload
-for the dedicated Windows hardware runner.
+"""Optimized top-hat payload: uses best parameters from issue #15 sweeps.
 
-Parallel to ``scripts/testfile_lg.py`` but targeting a ring of Gaussian
-peaks with a global vortex phase via ``SLM.ring_lattice_vortex_target``.
-Shared CGM + optics config with the LG01 baseline so the per-shape diff
-on the camera is attributable to the target choice alone.
+Saves E_out, targetAmp, and region to the .npz for offline uniformity analysis.
 
-Next step after running this script::
+Usage::
 
-    ./scripts/testfile_ring.sh   # pushes payload + triggers remote runner
+    uv run python scripts/tophat_optimized/testfile_tophat_optimized.py
+    ./scripts/tophat_optimized/testfile_tophat_optimized.sh
 """
 from __future__ import annotations
 
@@ -29,46 +26,34 @@ from slm.targets import mask_from_target
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-PAYLOAD_PATH = "scripts/testfile_ring_payload.npz"
-PARAMS_PATH = "scripts/testfile_ring_params.json"
-PREVIEW_PATH = "scripts/testfile_ring_preview.pdf"
+PAYLOAD_PATH = "scripts/tophat_optimized/testfile_tophat_optimized_payload.npz"
+PARAMS_PATH = "scripts/tophat_optimized/testfile_tophat_optimized_params.json"
+PREVIEW_PATH = "scripts/tophat_optimized/testfile_tophat_optimized_preview.pdf"
 
 
 def main():
-    # --- Capture parameters (used later by the Windows runner) ---
-    etime_us = 4000        # 4 ms exposure
-    n_avg = 10             # average 10 frames
-    LUT = 207
-    fresnel_sd = 1000      # um -- compensates camera-focal-plane offset
+    # --- Optimized parameters (issue #15 sweep results) ---
+    etime_us = 4000
+    n_avg = 10
+    LUT = 200              # was 207, sweep winner
+    fresnel_sd = 1000      # unchanged (already optimal)
 
-    # --- Ring-lattice-vortex target parameters (1024^2 grid, focal pitch 15.83 um/px) ---
-    # ring_radius=20 px = 316 um on focal plane = 171 camera-px radius -> visible ring.
-    ring_n_sites = 8            # 8 Gaussian peaks on the ring
-    ring_radius = 20.0          # px (~316 um in focal plane)
-    ring_peak_sigma = 2.0       # px per-peak 1-sigma (~32 um)
-    ring_ell = 1                # topological charge of the global vortex
+    tophat_radius = 10.0
 
-    # --- CGM analytical initial phase (issue #12 iteration #4: places target on-camera) ---
-    # Paper's Table I values (R=4.5e-3, D=-pi/2, theta=pi/4) on our 4096^2 grid shift
-    # the target by ~2865 um off zero-order, OFF the 5617x7444 um camera FOV.  Use the
-    # reduced shift that hardware iteration #4 in issue #12 confirmed to land on-camera.
-    cgm_R = 0.0            # no quadratic lensing (R=4.5e-3 caused crescent artifact per issue #12 #1)
-    cgm_D = -np.pi / 6     # smaller linear phase offset (~950 um shift, on-camera)
-    cgm_theta = 0.0        # horizontal offset only (keeps target within camera row extent)
+    cgm_R = 0
+    cgm_D = -np.pi / 12   # unchanged
+    cgm_theta = 0          # was -pi/4, sweep winner (pure horizontal offset)
     cgm_steepness = 9
-    cgm_max_iterations = 200
+    cgm_max_iterations = 2000
 
-    # --- 1. SLM_class setup (reads hamamatsu_test_config.json) ---
-    # Override arraySizeBit from default [12,12] (=4096^2) to [10,10] (=1024^2) so the
-    # CGM compute grid matches the SLM native short dimension (1024 rows).  This avoids
-    # the lossy central 1024x1024 crop in phase_to_screen that previously dropped
-    # fidelity from 0.98 -> 0.22.  See root-cause investigation.
+    # --- SLM setup with optimized beamwaist ---
     SLM = SLM_class()
-    SLM.arraySizeBit = [10, 10]  # 1024 x 1024 compute grid
+    SLM.beamwaist = 4500   # was 5100, sweep winner
+    SLM.arraySizeBit = [10, 10]
     SLM.image_init(
-        initGaussianPhase_user_defined=np.zeros((1024, 1024)), Plot=False,
+        initGaussianPhase_user_defined=np.zeros((1024, 1024)), Plot=False
     )
-    W, H = SLM.SLMRes  # (1272, 1024)
+    W, H = SLM.SLMRes
     cx, cy = W // 2, H // 2
 
     correct = lambda screen: imgpy.SLM_screen_Correct(  # noqa: E731
@@ -78,32 +63,20 @@ def main():
     print(f"Compute grid: ({SLM.ImgResY}, {SLM.ImgResX})  "
           f"focal pitch = {SLM.Focalpitchx:.3f} um/px")
     print(f"SLM native:   ({H}, {W})")
+    print(f"beamwaist = {SLM.beamwaist} um (optimized)")
 
-    # --- 2. Generate ring-lattice-vortex target on the 1024x1024 grid ---
-    targetAmp = SLM.ring_lattice_vortex_target(
-        n_sites=ring_n_sites,
-        ring_radius=ring_radius,
-        peak_sigma=ring_peak_sigma,
-        ell=ring_ell,
-    )
-    print(
-        f"\n[TARGET] ring lattice vortex: n_sites={ring_n_sites} "
-        f"ring_radius={ring_radius:.0f}px peak_sigma={ring_peak_sigma:.0f}px "
-        f"ell={ring_ell} dtype={targetAmp.dtype} shape={targetAmp.shape} "
-        f"nonzero={np.count_nonzero(targetAmp)}"
-    )
+    # --- Generate target ---
+    targetAmp = SLM.top_hat_target(radius=tophat_radius)
+    print(f"\n[TARGET] top-hat: radius={tophat_radius:.0f}px "
+          f"nonzero={np.count_nonzero(targetAmp)}")
 
-    # --- 3. Build the paper's analytical initial phase ---
+    # --- Initial phase ---
     init_phi = _initial_phase(
         (int(SLM.ImgResY), int(SLM.ImgResX)),
         CGMConfig(R=cgm_R, D=cgm_D, theta=cgm_theta),
     )
 
-    # --- 4. Run CGM on the compute grid via torch/CUDA ---
-    # eta_min=0.05 forces CGM to find a higher-efficiency solution.  Default (0) lets
-    # CGM converge to F~1 with eta~0.5%, where the D-grating-deflected zero-order
-    # overwhelms the target shape on hardware.  eta_min=0.05 gives ~10x more light in
-    # the target region at a small fidelity cost (F ~0.99 still).
+    # --- CGM ---
     cgm_device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"\n[CGM] running {cgm_max_iterations} iterations on "
           f"{SLM.ImgResY}x{SLM.ImgResX} grid (device={cgm_device})...")
@@ -114,32 +87,31 @@ def main():
         torch.from_numpy(targetAmp),
         max_iterations=cgm_max_iterations,
         steepness=cgm_steepness,
-        eta_min=0.05,
+        eta_min=0.05,          # was 0.1, sweep winner
         Plot=False,
     )
     cgm_wall_time = time.perf_counter() - t0
     per_iter_ms = cgm_wall_time / max(cgm_max_iterations, 1) * 1000
-    print(f"[CGM] done in {cgm_wall_time:.2f} s "
-          f"({per_iter_ms:.1f} ms/iter)")
+    print(f"[CGM] done in {cgm_wall_time:.2f} s ({per_iter_ms:.1f} ms/iter)")
 
-    # Wrap phase to [-pi, pi] before cropping.
     phase_np = SLM_Phase.cpu().clone().numpy()
     phase_wrapped = np.angle(np.exp(1j * phase_np))
     SLM_screen_raw = SLM.phase_to_screen(phase_wrapped)
 
-    # --- 5. Post-hoc Fresnel lens ---
+    # --- Fresnel lens ---
     fresnel = SLM.fresnel_lens_phase_generate(fresnel_sd, cx, cy)[0]
     SLM_screen_shift = (
         (SLM_screen_raw.astype(np.int32) + fresnel.astype(np.int32)) % 256
     ).astype(np.uint8)
 
-    # --- 6. Calibration correction ---
+    # --- Calibration correction ---
     SLM_screen_final = correct(SLM_screen_shift)
     print(f"\n[SCREEN] ready-to-display uint8 {SLM_screen_final.shape} "
           f"range=[{SLM_screen_final.min()}, {SLM_screen_final.max()}]")
 
-    # --- 7. Diagnostic metrics ---
+    # --- Metrics ---
     from slm.metrics import fidelity as _fidelity, efficiency as _efficiency
+    from slm.metrics import uniformity as _uniformity, non_uniformity_error as _nue
     from slm.propagation import fft_propagate
     from slm.targets import measure_region as _measure_region
 
@@ -147,19 +119,35 @@ def main():
     E_out_1024 = fft_propagate(SLM.initGaussianAmp * np.exp(1j * phase_wrapped))
     F = _fidelity(E_out_1024, targetAmp, region_np)
     eta = _efficiency(E_out_1024, region_np)
-    print(f"[METRICS] fidelity F={F:.6f}  (1-F={1-F:.2e})  efficiency eta={eta*100:.2f}%")
 
-    # --- 8. Save payload.npz ---
+    # Intensity uniformity inside the disc
+    target_mask = mask_from_target(targetAmp)
+    I_sim = np.abs(E_out_1024) ** 2
+    I_disc = I_sim[target_mask > 0]
+    unif_sim = _uniformity(I_disc)
+    nue = _nue(I_sim, np.abs(targetAmp) ** 2, target_mask)
+
+    print(f"[METRICS] fidelity F={F:.6f}  efficiency eta={eta*100:.2f}%")
+    print(f"[METRICS] intensity uniformity (std/mean) = {unif_sim:.4f} ({unif_sim*100:.2f}%)")
+    print(f"[METRICS] non-uniformity error (Bowman)   = {nue:.6f}")
+
+    # --- Save payload with simulation data for analysis ---
     np.savez_compressed(
         PAYLOAD_PATH,
         slm_screen=SLM_screen_final,
+        E_out=E_out_1024,
+        targetAmp=targetAmp,
+        region=region_np,
+        target_mask=target_mask,
+        phase_wrapped=phase_wrapped,
+        initGaussianAmp=SLM.initGaussianAmp,
     )
     payload_size_kb = int(np.ceil(
         __import__("os").path.getsize(PAYLOAD_PATH) / 1024
     ))
     print(f"\n[SAVE] payload:  {PAYLOAD_PATH}  ({payload_size_kb} KB)")
 
-    # --- 9. Save params.json ---
+    # --- Save params ---
     params = {
         "algorithm": "CGM",
         "payload": PAYLOAD_PATH,
@@ -178,48 +166,47 @@ def main():
         "calibration_applied_on_linux": True,
         "calibration_bmp": "calibration/CAL_LSH0905549_1013nm.bmp",
         "LUT": LUT,
-        "target": "ring_lattice_vortex",
-        "ring_n_sites": ring_n_sites,
-        "ring_radius_px": ring_radius,
-        "ring_radius_um_focal": round(float(ring_radius * SLM.Focalpitchx), 2),
-        "ring_peak_sigma_px": ring_peak_sigma,
-        "ring_ell": ring_ell,
+        "target": "top_hat",
+        "tophat_radius_px": tophat_radius,
+        "tophat_radius_um_focal": round(float(tophat_radius * SLM.Focalpitchx), 2),
+        "beamwaist_um": SLM.beamwaist,
         "cgm_max_iterations": cgm_max_iterations,
         "cgm_steepness": cgm_steepness,
         "cgm_R": cgm_R,
         "cgm_D": cgm_D,
         "cgm_theta": cgm_theta,
+        "eta_min": 0.05,
         "cgm_wall_time_s": round(cgm_wall_time, 3),
         "cgm_per_iter_ms": round(per_iter_ms, 2),
         "cgm_device": cgm_device,
         "final_fidelity": round(float(F), 6),
         "final_one_minus_fidelity": float(f"{1 - F:.3e}"),
         "final_efficiency": round(float(eta), 6),
+        "intensity_uniformity_std_over_mean": round(float(unif_sim), 6),
+        "non_uniformity_error_bowman": round(float(nue), 6),
         "timestamp_local": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime()),
     }
     with open(PARAMS_PATH, "w", encoding="utf-8") as f:
         json.dump(params, f, ensure_ascii=False, indent=2)
     print(f"[SAVE] params:  {PARAMS_PATH}")
 
-    # --- 10. Save preview.pdf ---
+    # --- Preview ---
     _save_preview(
         SLM.initGaussianAmp, targetAmp, E_out_1024, region_np,
-        SLM_screen_final, SLM_Phase.cpu().numpy(), F, eta,
+        SLM_screen_final, SLM_Phase.cpu().numpy(), F, eta, unif_sim,
     )
     print(f"[SAVE] preview: {PREVIEW_PATH}")
 
-    # --- 11. Next-step hint ---
     print()
     print("=" * 72)
-    print("Payload ready.  Next step (pushes to Windows and runs the experiment):")
+    print("Payload ready.  Next step:")
     print()
-    print("    ./scripts/testfile_ring.sh")
+    print("    ./scripts/tophat_optimized/testfile_tophat_optimized.sh")
     print()
     print("=" * 72)
 
 
-def _save_preview(input_amp, target, E_out, region, slm_screen_final, slm_phase_full, F, eta):
-    """6-panel PDF: input / target intensity+phase / output intensity+phase / screen."""
+def _save_preview(input_amp, target, E_out, region, slm_screen_final, slm_phase_full, F, eta, unif):
     target_mask = mask_from_target(target)
 
     fig, axes = plt.subplots(2, 3, figsize=(14, 9))
@@ -228,16 +215,16 @@ def _save_preview(input_amp, target, E_out, region, slm_screen_final, slm_phase_
     axes[0, 0].set_title("Input amplitude |S|\n(Gaussian, 1024 grid)")
 
     axes[0, 1].imshow(np.abs(target) ** 2, cmap="hot")
-    axes[0, 1].set_title("Target |tau|^2\n(ring lattice vortex)")
+    axes[0, 1].set_title("Target |tau|^2\n(top-hat disc)")
 
     target_phase_masked = np.where(target_mask > 0, np.angle(target), np.nan)
     axes[0, 2].imshow(target_phase_masked, cmap="twilight", vmin=-np.pi, vmax=np.pi)
-    axes[0, 2].set_title("Target phase arg(tau)\n(vortex)")
+    axes[0, 2].set_title("Target phase arg(tau)\n(flat, zero)")
 
     out_int = (np.abs(E_out) ** 2) * region
     axes[1, 0].imshow(out_int, cmap="hot")
     axes[1, 0].set_title(
-        f"Output |E_out|^2\nF={F:.4f}, eta={100*eta:.2f}%"
+        f"Output |E_out|^2\nF={F:.4f}, eta={100*eta:.2f}%, unif={unif*100:.1f}%"
     )
 
     out_phase_masked = np.where(target_mask > 0, np.angle(E_out), np.nan)

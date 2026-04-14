@@ -1,0 +1,43 @@
+{
+  "algorithm": "CGM",
+  "payload": "scripts/tophat/testfile_tophat_payload.npz",
+  "compute_grid": [
+    1024,
+    1024
+  ],
+  "slm_native": [
+    1024,
+    1272
+  ],
+  "focal_pitch_x_um_per_px": 15.8281,
+  "focal_pitch_y_um_per_px": 15.8281,
+  "runner_defaults": {
+    "etime_us": 4000,
+    "n_avg": 10,
+    "monitor": 1
+  },
+  "fresnel_applied_on_linux": true,
+  "fresnel_shift_distance_um": 1000,
+  "fresnel_center_xy_px": [
+    636,
+    512
+  ],
+  "calibration_applied_on_linux": true,
+  "calibration_bmp": "calibration/CAL_LSH0905549_1013nm.bmp",
+  "LUT": 207,
+  "target": "top_hat",
+  "tophat_radius_px": 10.0,
+  "tophat_radius_um_focal": 158.28,
+  "cgm_max_iterations": 2000,
+  "cgm_steepness": 9,
+  "cgm_R": 0,
+  "cgm_D": -0.2617993877991494,
+  "cgm_theta": -0.7853981633974483,
+  "cgm_wall_time_s": 227.428,
+  "cgm_per_iter_ms": 113.71,
+  "cgm_device": "cuda",
+  "final_fidelity": 0.964234,
+  "final_one_minus_fidelity": 0.03577,
+  "final_efficiency": 0.047665,
+  "timestamp_local": "2026-04-14T14:32:28"
+}

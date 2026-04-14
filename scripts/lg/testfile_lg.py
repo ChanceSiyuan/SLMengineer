@@ -1,14 +1,38 @@
-"""Local-only CGM compute: produce a gaussian-line phase payload for the
+"""Local-only CGM compute: produce an LG^0_1 phase payload for the
 dedicated Windows hardware runner.
 
-Parallel to ``scripts/testfile_lg.py`` but targeting a 1D line with
-Gaussian cross-section via ``SLM.gaussian_line_target``.  Shared CGM +
-optics config with the LG01 baseline so the per-shape diff on the
-camera is attributable to the target choice alone.
+This script runs ENTIRELY on the local (Linux+RTX 3090) box.  It does:
+
+  1. SLM_class setup on the 4096x4096 computation grid.
+  2. LG^0_1 donut target via ``SLM.lg_mode_target``.
+  3. Bowman-analytical initial phase ``phi_0 = R*(p^2+q^2) + D*(p cos t + q sin t)``
+     via ``slm.cgm._initial_phase``.
+  4. CGM on torch/CUDA (``CGM_phase_generate``, ~100 s on 4096^2).
+  5. ``SLM.phase_to_screen`` to crop the 4096^2 phase down to the SLM native
+     resolution (1024, 1272) uint8.
+  6. Post-hoc Fresnel lens (via ``SLM.fresnel_lens_phase_generate``) added to
+     the screen modulo 256, matching the ``scripts/testfile.py`` WGS workflow.
+  7. Calibration correction via ``slm.imgpy.SLM_screen_Correct`` with the
+     LUT + calibration BMP -- matches the testfile.py pipeline byte-for-byte.
+  8. Saves three artefacts in ``scripts/`` (so they survive the
+     ``ai_slm_loop.sh`` tar exclusions where applicable):
+
+       scripts/lg/testfile_lg_payload.npz      (slm_screen uint8 + diagnostics)
+       scripts/lg/testfile_lg_params.json      (human-readable metadata)
+       scripts/lg/testfile_lg_preview.pdf      (6-panel visualisation)
+
+The **Windows hardware runner** lives in a separate, lightweight repo at
+``C:\\Users\\Galileo\\slm_runner\\`` and simply loads the payload .npz,
+displays the pre-computed uint8 screen on the SLM, captures the camera
+before/after, and returns the data to Linux.  All CGM and correction
+logic stays on this (Linux) box.
 
 Next step after running this script::
 
-    ./scripts/testfile_gline.sh   # pushes payload + triggers remote runner
+    ./scripts/lg/testfile_lg.sh   # pushes payload + triggers remote runner
+
+The ``.sh`` is a thin orchestrator: scp payload -> ssh runner -> scp
+results back into ./data/.
 """
 from __future__ import annotations
 
@@ -29,44 +53,35 @@ from slm.targets import mask_from_target
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-PAYLOAD_PATH = "scripts/testfile_gline_payload.npz"
-PARAMS_PATH = "scripts/testfile_gline_params.json"
-PREVIEW_PATH = "scripts/testfile_gline_preview.pdf"
+PAYLOAD_PATH = "scripts/lg/testfile_lg_payload.npz"
+PARAMS_PATH = "scripts/lg/testfile_lg_params.json"
+PREVIEW_PATH = "scripts/lg/testfile_lg_preview.pdf"
 
 
 def main():
     # --- Capture parameters (used later by the Windows runner) ---
-    etime_us = 4000        # 4 ms exposure (kept low to avoid zero-order saturation on camera)
+    etime_us = 4000        # 4 ms exposure
     n_avg = 10             # average 10 frames
     LUT = 207
     fresnel_sd = 1000      # um -- compensates camera-focal-plane offset
 
-    # --- Gaussian-line target parameters (1024^2 grid, focal pitch 15.83 um/px) ---
-    # 30 focal-px = 475 um length on focal plane = 258 camera-px.  sigma=2 = 17 camera-px.
-    gline_length = 30.0         # px along line (~475 um)
-    gline_width_sigma = 2.0     # px perpendicular (~32 um 1-sigma)
-    gline_angle = 0.0           # horizontal
-    gline_phase_gradient = 0.0  # no linear phase ramp
+    # --- LG mode parameters (Bowman et al. top-hat.tex Table I) ---
+    lg_ell = 1             # topological charge (vortex index); LG^0_1 donut
+    lg_p = 0               # radial index
+    lg_w0 = 100.0          # beam waist in focal-plane pixels
+                           # (= 396 um on the 4096-grid, focal pitch 3.96 um/px)
 
-    # --- CGM analytical initial phase (issue #12 iteration #4: places target on-camera) ---
-    # Paper's Table I values (R=4.5e-3, D=-pi/2, theta=pi/4) on our 4096^2 grid shift
-    # the target by ~2865 um off zero-order, OFF the 5617x7444 um camera FOV.  Use the
-    # reduced shift that hardware iteration #4 in issue #12 confirmed to land on-camera.
-    cgm_R = 0.0            # no quadratic lensing (R=4.5e-3 caused crescent artifact per issue #12 #1)
-    cgm_D = -np.pi / 6     # smaller linear phase offset (~950 um shift, on-camera)
-    cgm_theta = 0.0        # horizontal offset only (keeps target within camera row extent)
+    # --- CGM analytical initial phase (paper's LG^0_1 optimum, Table I) ---
+    cgm_R = 4.5e-3         # quadratic curvature (rad/px^2)
+    cgm_D = -np.pi / 2     # linear phase offset magnitude
+    cgm_theta = np.pi / 4  # linear phase angle (diagonal, shifts off zero-order)
     cgm_steepness = 9
     cgm_max_iterations = 200
 
     # --- 1. SLM_class setup (reads hamamatsu_test_config.json) ---
-    # Override arraySizeBit from default [12,12] (=4096^2) to [10,10] (=1024^2) so the
-    # CGM compute grid matches the SLM native short dimension (1024 rows).  This avoids
-    # the lossy central 1024x1024 crop in phase_to_screen that previously dropped
-    # fidelity from 0.98 -> 0.22.  See root-cause investigation.
     SLM = SLM_class()
-    SLM.arraySizeBit = [10, 10]  # 1024 x 1024 compute grid
     SLM.image_init(
-        initGaussianPhase_user_defined=np.zeros((1024, 1024)), Plot=False,
+        initGaussianPhase_user_defined=np.zeros((4096, 4096)), Plot=False,
     )
     W, H = SLM.SLMRes  # (1272, 1024)
     cx, cy = W // 2, H // 2
@@ -79,16 +94,10 @@ def main():
           f"focal pitch = {SLM.Focalpitchx:.3f} um/px")
     print(f"SLM native:   ({H}, {W})")
 
-    # --- 2. Generate gaussian-line target on the 1024x1024 computation grid ---
-    targetAmp = SLM.gaussian_line_target(
-        length=gline_length,
-        width_sigma=gline_width_sigma,
-        angle=gline_angle,
-        phase_gradient=gline_phase_gradient,
-    )
+    # --- 2. Generate LG^0_1 donut target on the 4096x4096 computation grid ---
+    targetAmp = SLM.lg_mode_target(ell=lg_ell, p=lg_p, w0=lg_w0)
     print(
-        f"\n[TARGET] gaussian line: length={gline_length:.0f}px "
-        f"width_sigma={gline_width_sigma:.0f}px angle={gline_angle:.2f} rad "
+        f"\n[TARGET] LG^{lg_p}_{lg_ell} donut: w0={lg_w0:.0f}px "
         f"dtype={targetAmp.dtype} shape={targetAmp.shape} "
         f"nonzero={np.count_nonzero(targetAmp)}"
     )
@@ -99,11 +108,7 @@ def main():
         CGMConfig(R=cgm_R, D=cgm_D, theta=cgm_theta),
     )
 
-    # --- 4. Run CGM on the compute grid via torch/CUDA ---
-    # eta_min=0.05 forces CGM to find a higher-efficiency solution.  Default (0) lets
-    # CGM converge to F~1 with eta~0.5%, where the D-grating-deflected zero-order
-    # overwhelms the target shape on hardware.  eta_min=0.05 gives ~10x more light in
-    # the target region at a small fidelity cost (F ~0.99 still).
+    # --- 4. Run CGM on 4096^2 via torch/CUDA ---
     cgm_device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"\n[CGM] running {cgm_max_iterations} iterations on "
           f"{SLM.ImgResY}x{SLM.ImgResX} grid (device={cgm_device})...")
@@ -114,7 +119,6 @@ def main():
         torch.from_numpy(targetAmp),
         max_iterations=cgm_max_iterations,
         steepness=cgm_steepness,
-        eta_min=0.05,
         Plot=False,
     )
     cgm_wall_time = time.perf_counter() - t0
@@ -122,37 +126,43 @@ def main():
     print(f"[CGM] done in {cgm_wall_time:.2f} s "
           f"({per_iter_ms:.1f} ms/iter)")
 
-    # Wrap phase to [-pi, pi] before cropping.
+    # Wrap phase to [-pi, pi] before cropping (CGM may accumulate phase
+    # outside this range).
     phase_np = SLM_Phase.cpu().clone().numpy()
     phase_wrapped = np.angle(np.exp(1j * phase_np))
     SLM_screen_raw = SLM.phase_to_screen(phase_wrapped)
 
-    # --- 5. Post-hoc Fresnel lens ---
+    # --- 5. Post-hoc Fresnel lens (matches testfile.py pipeline) ---
     fresnel = SLM.fresnel_lens_phase_generate(fresnel_sd, cx, cy)[0]
     SLM_screen_shift = (
         (SLM_screen_raw.astype(np.int32) + fresnel.astype(np.int32)) % 256
     ).astype(np.uint8)
 
-    # --- 6. Calibration correction ---
+    # --- 6. Calibration correction (LUT + calibration BMP, CPU-only) ---
     SLM_screen_final = correct(SLM_screen_shift)
     print(f"\n[SCREEN] ready-to-display uint8 {SLM_screen_final.shape} "
           f"range=[{SLM_screen_final.min()}, {SLM_screen_final.max()}]")
 
-    # --- 7. Diagnostic metrics ---
+    # --- 7. Diagnostic metrics (final fidelity, efficiency on the 4096 grid) ---
+    # Compute final metrics by re-evaluating E_out from the saved phase on
+    # the 4096 grid.  Cheap compared to the CGM loop.
     from slm.metrics import fidelity as _fidelity, efficiency as _efficiency
     from slm.propagation import fft_propagate
     from slm.targets import measure_region as _measure_region
 
     region_np = _measure_region(targetAmp.shape, targetAmp, margin=5)
-    E_out_1024 = fft_propagate(SLM.initGaussianAmp * np.exp(1j * phase_wrapped))
-    F = _fidelity(E_out_1024, targetAmp, region_np)
-    eta = _efficiency(E_out_1024, region_np)
+    E_out_4096 = fft_propagate(SLM.initGaussianAmp * np.exp(1j * phase_wrapped))
+    F = _fidelity(E_out_4096, targetAmp, region_np)
+    eta = _efficiency(E_out_4096, region_np)
     print(f"[METRICS] fidelity F={F:.6f}  (1-F={1-F:.2e})  efficiency eta={eta*100:.2f}%")
 
-    # --- 8. Save payload.npz ---
+    # --- 8. Save payload.npz (MINIMAL: just the uint8 SLM screen that the
+    #        Windows runner will upload -- kept small enough for fast scp).
+    #        Diagnostic arrays (target/output fields) are NOT included; they
+    #        stay local and only appear in the preview PDF below.
     np.savez_compressed(
         PAYLOAD_PATH,
-        slm_screen=SLM_screen_final,
+        slm_screen=SLM_screen_final,  # uint8 (1024, 1272) ready to display
     )
     payload_size_kb = int(np.ceil(
         __import__("os").path.getsize(PAYLOAD_PATH) / 1024
@@ -167,28 +177,32 @@ def main():
         "slm_native": [int(H), int(W)],
         "focal_pitch_x_um_per_px": round(float(SLM.Focalpitchx), 4),
         "focal_pitch_y_um_per_px": round(float(SLM.Focalpitchy), 4),
+        # capture parameters for the Windows runner
         "runner_defaults": {
             "etime_us": etime_us,
             "n_avg": n_avg,
             "monitor": 1,
         },
+        # what was already applied on the Linux side
         "fresnel_applied_on_linux": True,
         "fresnel_shift_distance_um": fresnel_sd,
         "fresnel_center_xy_px": [int(cx), int(cy)],
         "calibration_applied_on_linux": True,
         "calibration_bmp": "calibration/CAL_LSH0905549_1013nm.bmp",
         "LUT": LUT,
-        "target": "gaussian_line",
-        "gline_length_px": gline_length,
-        "gline_length_um_focal": round(float(gline_length * SLM.Focalpitchx), 2),
-        "gline_width_sigma_px": gline_width_sigma,
-        "gline_angle_rad": gline_angle,
-        "gline_phase_gradient": gline_phase_gradient,
+        # target
+        "target": "LG mode",
+        "lg_ell": lg_ell,
+        "lg_p": lg_p,
+        "lg_w0_px": lg_w0,
+        "lg_w0_um_focal": round(float(lg_w0 * SLM.Focalpitchx), 2),
+        # CGM parameters
         "cgm_max_iterations": cgm_max_iterations,
         "cgm_steepness": cgm_steepness,
         "cgm_R": cgm_R,
         "cgm_D": cgm_D,
         "cgm_theta": cgm_theta,
+        # compute results
         "cgm_wall_time_s": round(cgm_wall_time, 3),
         "cgm_per_iter_ms": round(per_iter_ms, 2),
         "cgm_device": cgm_device,
@@ -201,9 +215,9 @@ def main():
         json.dump(params, f, ensure_ascii=False, indent=2)
     print(f"[SAVE] params:  {PARAMS_PATH}")
 
-    # --- 10. Save preview.pdf ---
+    # --- 10. Save preview.pdf (6-panel visual) ---
     _save_preview(
-        SLM.initGaussianAmp, targetAmp, E_out_1024, region_np,
+        SLM.initGaussianAmp, targetAmp, E_out_4096, region_np,
         SLM_screen_final, SLM_Phase.cpu().numpy(), F, eta,
     )
     print(f"[SAVE] preview: {PREVIEW_PATH}")
@@ -213,26 +227,26 @@ def main():
     print("=" * 72)
     print("Payload ready.  Next step (pushes to Windows and runs the experiment):")
     print()
-    print("    ./scripts/testfile_gline.sh")
+    print("    ./scripts/lg/testfile_lg.sh")
     print()
     print("=" * 72)
 
 
 def _save_preview(input_amp, target, E_out, region, slm_screen_final, slm_phase_full, F, eta):
-    """6-panel PDF: input / target intensity+phase / output intensity+phase / screen."""
+    """6-panel PDF: input / target intensity+phase / output intensity+phase / cost."""
     target_mask = mask_from_target(target)
 
     fig, axes = plt.subplots(2, 3, figsize=(14, 9))
 
     axes[0, 0].imshow(input_amp, cmap="viridis")
-    axes[0, 0].set_title("Input amplitude |S|\n(Gaussian, 1024 grid)")
+    axes[0, 0].set_title("Input amplitude |S|\n(Gaussian, 4096 grid)")
 
     axes[0, 1].imshow(np.abs(target) ** 2, cmap="hot")
-    axes[0, 1].set_title("Target |tau|^2\n(gaussian line)")
+    axes[0, 1].set_title("Target |tau|^2\n(LG^0_1 donut)")
 
     target_phase_masked = np.where(target_mask > 0, np.angle(target), np.nan)
     axes[0, 2].imshow(target_phase_masked, cmap="twilight", vmin=-np.pi, vmax=np.pi)
-    axes[0, 2].set_title("Target phase arg(tau)\n(flat)")
+    axes[0, 2].set_title("Target phase arg(tau)\n(vortex ell=1)")
 
     out_int = (np.abs(E_out) ** 2) * region
     axes[1, 0].imshow(out_int, cmap="hot")
@@ -244,6 +258,7 @@ def _save_preview(input_amp, target, E_out, region, slm_screen_final, slm_phase_
     axes[1, 1].imshow(out_phase_masked, cmap="twilight", vmin=-np.pi, vmax=np.pi)
     axes[1, 1].set_title("Output phase arg(E_out)")
 
+    # Final uint8 screen that will be uploaded to the SLM
     axes[1, 2].imshow(slm_screen_final, cmap="gray", vmin=0, vmax=255)
     axes[1, 2].set_title(
         f"SLM screen (Fresnel+calib applied)\n"

@@ -8,7 +8,7 @@ per-shape diff on the camera is attributable to the target choice alone.
 
 Next step after running this script::
 
-    ./scripts/testfile_tophat.sh   # pushes payload + triggers remote runner
+    ./scripts/tophat/testfile_tophat.sh   # pushes payload + triggers remote runner
 """
 from __future__ import annotations
 
@@ -29,15 +29,15 @@ from slm.targets import mask_from_target
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-PAYLOAD_PATH = "scripts/testfile_tophat_payload.npz"
-PARAMS_PATH = "scripts/testfile_tophat_params.json"
-PREVIEW_PATH = "scripts/testfile_tophat_preview.pdf"
+PAYLOAD_PATH = "scripts/tophat/testfile_tophat_payload.npz"
+PARAMS_PATH = "scripts/tophat/testfile_tophat_params.json"
+PREVIEW_PATH = "scripts/tophat/testfile_tophat_preview.pdf"
 
 
 def main():
     # --- Capture parameters (used later by the Windows runner) ---
     etime_us = 4000        # 4 ms exposure (kept low to avoid zero-order saturation on camera)
-    n_avg = 5             # average 10 frames
+    n_avg = 10             # average 10 frames
     LUT = 207
     fresnel_sd = 1000      # um -- compensates camera-focal-plane offset
 
@@ -202,7 +202,7 @@ def main():
     print("=" * 72)
     print("Payload ready.  Next step (pushes to Windows and runs the experiment):")
     print()
-    print("    ./scripts/testfile_tophat.sh")
+    print("    ./scripts/tophat/testfile_tophat.sh")
     print()
     print("=" * 72)
 
