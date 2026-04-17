@@ -57,7 +57,7 @@ def multi_capture(camera, etime, n_frames=10):
 
 
 def main():
-    etime_us = 4000    # 4 ms exposure
+    etime_us = 4000   # 4 ms exposure
     n_avg = 10          # average 10 frames
     fresnel_sd = 1000   # best Fresnel shift distance from sweep (beamwaist=5000)
 

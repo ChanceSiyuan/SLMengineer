@@ -5,11 +5,12 @@ Saves E_out, targetAmp, and region to the .npz for offline uniformity analysis.
 Usage::
 
     uv run python scripts/tophat_optimized/testfile_tophat_optimized.py
-    ./scripts/tophat_optimized/testfile_tophat_optimized.sh
+    ./push_run.sh payload/tophat_optimized/testfile_tophat_optimized_payload.npz
 """
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 
@@ -26,9 +27,11 @@ from slm.targets import mask_from_target
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-PAYLOAD_PATH = "scripts/tophat_optimized/testfile_tophat_optimized_payload.npz"
-PARAMS_PATH = "scripts/tophat_optimized/testfile_tophat_optimized_params.json"
-PREVIEW_PATH = "scripts/tophat_optimized/testfile_tophat_optimized_preview.pdf"
+OUTPUT_DIR = "payload/tophat_optimized"
+PAYLOAD_PATH = f"{OUTPUT_DIR}/testfile_tophat_optimized_payload.npz"
+PARAMS_PATH = f"{OUTPUT_DIR}/testfile_tophat_optimized_params.json"
+PREVIEW_PATH = f"{OUTPUT_DIR}/testfile_tophat_optimized_preview.pdf"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
 def main():
@@ -143,7 +146,7 @@ def main():
         initGaussianAmp=SLM.initGaussianAmp,
     )
     payload_size_kb = int(np.ceil(
-        __import__("os").path.getsize(PAYLOAD_PATH) / 1024
+        os.path.getsize(PAYLOAD_PATH) / 1024
     ))
     print(f"\n[SAVE] payload:  {PAYLOAD_PATH}  ({payload_size_kb} KB)")
 
@@ -201,7 +204,7 @@ def main():
     print("=" * 72)
     print("Payload ready.  Next step:")
     print()
-    print("    ./scripts/tophat_optimized/testfile_tophat_optimized.sh")
+    print(f"    ./push_run.sh {PAYLOAD_PATH}")
     print()
     print("=" * 72)
 

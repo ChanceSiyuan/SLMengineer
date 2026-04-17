@@ -242,7 +242,7 @@ def main():
     print(f"Sweep complete: {idx} payloads in {OUT_DIR}/")
     print(f"Manifest: {manifest_path}")
     print(f"\nNext step:")
-    print(f"    ./scripts/sweep_tophat.sh")
+    print(f"    ./push_run.sh {OUT_DIR}/<payload_file>.npz   # per sweep point")
     print(f"{'='*60}")
 
 

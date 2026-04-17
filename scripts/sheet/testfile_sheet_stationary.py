@@ -1,14 +1,37 @@
-"""Local-only CGM compute: produce a gaussian-line phase payload for the
-dedicated Windows hardware runner.
+"""Local-only CGM compute for a light-sheet target, seeded with the
+**stationary-phase** analytic initial guess from
+``references/Top Hat Beam.pdf`` (closed-form 1D top-hat phase + cylindrical
+Fresnel lens for the perpendicular Gaussian).
 
-Parallel to ``scripts/testfile_lg.py`` but targeting a 1D line with
-Gaussian cross-section via ``SLM.gaussian_line_target``.  Shared CGM +
-optics config with the LG01 baseline so the per-shape diff on the
-camera is attributable to the target choice alone.
+The seed is a 2D match for ``light_sheet_target``: ``stationary_phase_1d``
+along the along-line axis and an ABCD-derived cylindrical lens along the
+perpendicular axis that widens the natural focal Gaussian
+``lambda*f/(pi*w0)`` up to the target's perpendicular width.  Pre-CGM this
+seed alone gives ~99.9% of the incident power inside the target region.
 
-Next step after running this script::
+Seed vs Bowman, measured on this target (see
+``scripts/sheet/benchmark_stationary_vs_bowman.py``):
 
-    ./push_run.sh payload/gline/testfile_gline_payload.npz
+    eta_min=0   :  stationary F=1.000 eta=2.32%   |   Bowman F=1.000 eta=0.19%
+    eta_min=0.05:  stationary F=0.985 eta=3.21%   |   Bowman F=0.985 eta=3.21%
+    eta_min=0.30:  stationary F=0.878 eta=4.88%   |   Bowman F=0.878 eta=4.88%
+
+Two takeaways:
+
+  1. Without an eta floor, the stationary seed delivers **12x more
+     energy to the target region** at the same F=1 than Bowman, which
+     converges to a degenerate "single pixel with flat phase" minimum.
+  2. With an eta floor, both seeds tie at the same Pareto point --
+     the floor is the binding constraint, not the seed.
+
+This script defaults to ``eta_min=0`` to showcase (1).  Set ``ETA_MIN``
+env var to override::
+
+    # Showcase: F=1.0 at eta=2.32% (12x more efficient than Bowman)
+    uv run python scripts/sheet/testfile_sheet_stationary.py
+
+    # Baseline-matched for a direct A/B:
+    ETA_MIN=0.3 uv run python scripts/sheet/testfile_sheet_stationary.py
 """
 from __future__ import annotations
 
@@ -23,53 +46,55 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from slm.cgm import CGM_phase_generate, CGMConfig, _initial_phase
+from slm.cgm import CGM_phase_generate
 from slm.generation import SLM_class
 from slm import imgpy
 from slm.targets import mask_from_target
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-OUTPUT_DIR = "payload/gline"
-PAYLOAD_PATH = f"{OUTPUT_DIR}/testfile_gline_payload.npz"
-PARAMS_PATH = f"{OUTPUT_DIR}/testfile_gline_params.json"
-PREVIEW_PATH = f"{OUTPUT_DIR}/testfile_gline_preview.pdf"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+OUTPUT_DIR = "payload/sheet"
+PAYLOAD_PATH = f"{OUTPUT_DIR}/testfile_sheet_stationary_payload.npz"
+PARAMS_PATH = f"{OUTPUT_DIR}/testfile_sheet_stationary_params.json"
+PREVIEW_PATH = f"{OUTPUT_DIR}/testfile_sheet_stationary_preview.pdf"
+
+# Measured incident-beam center on the SLM plane (um, relative to the
+# SLM compute-grid geometric center).  Kept identical to the baseline
+# testfile_sheet.py so the A/B diff is attributable to the seed alone.
+BEAM_CENTER_DX_UM = 0
+BEAM_CENTER_DY_UM = 0
 
 
 def main():
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
     # --- Capture parameters (used later by the Windows runner) ---
-    etime_us = 4000        # 4 ms exposure (kept low to avoid zero-order saturation on camera)
-    n_avg = 10             # average 10 frames
+    etime_us = 20
+    n_avg = 10
     LUT = 207
-    fresnel_sd = 1000      # um -- compensates camera-focal-plane offset
+    fresnel_sd = 1000
 
-    # --- Gaussian-line target parameters (1024^2 grid, focal pitch 15.83 um/px) ---
-    # 30 focal-px = 475 um length on focal plane = 258 camera-px.  sigma=2 = 17 camera-px.
-    gline_length = 30.0         # px along line (~475 um)
-    gline_width_sigma = 2.0     # px perpendicular (~32 um 1-sigma)
-    gline_angle = 0.0           # horizontal
-    gline_phase_gradient = 0.0  # no linear phase ramp
+    # --- Light-sheet target parameters (match testfile_sheet.py exactly) ---
+    sheet_flat_width = 34       # px of uniform flat-top along line (~538 um)
+    sheet_gaussian_sigma = 2.5  # px perpendicular Gaussian (~40 um)
+    sheet_angle = 0             # horizontal
+    sheet_edge_sigma = 0.1      # px soft Gaussian taper at ends of the flat region
 
-    # --- CGM analytical initial phase (issue #12 iteration #4: places target on-camera) ---
-    # Paper's Table I values (R=4.5e-3, D=-pi/2, theta=pi/4) on our 4096^2 grid shift
-    # the target by ~2865 um off zero-order, OFF the 5617x7444 um camera FOV.  Use the
-    # reduced shift that hardware iteration #4 in issue #12 confirmed to land on-camera.
-    cgm_R = 0          # no quadratic lensing (R=4.5e-3 caused crescent artifact per issue #12 #1)
-    cgm_D = -np.pi / 6     # smaller linear phase offset (~950 um shift, on-camera)
-    cgm_theta = - np.pi / 4        # horizontal offset only (keeps target within camera row extent)
+    # --- CGM iteration budget & efficiency floor ---
+    cgm_max_iterations = int(os.environ.get("CGM_MAX_ITERS", "2000"))
     cgm_steepness = 9
-    cgm_max_iterations = 2000
+    # eta_min=0 (default) lets CGM exploit the seed's ray budget to reach
+    # F=1.0 at eta~2.3% -- 12x better efficiency than Bowman at the same F.
+    # Override with ETA_MIN=0.3 for a direct apples-to-apples A/B against
+    # testfile_sheet.py (both reach the same F=0.878 eta=4.88% plateau).
+    setting_eta = float(os.environ.get("ETA_MIN", "0.0"))
 
     # --- 1. SLM_class setup (reads hamamatsu_test_config.json) ---
-    # Override arraySizeBit from default [12,12] (=4096^2) to [10,10] (=1024^2) so the
-    # CGM compute grid matches the SLM native short dimension (1024 rows).  This avoids
-    # the lossy central 1024x1024 crop in phase_to_screen that previously dropped
-    # fidelity from 0.98 -> 0.22.  See root-cause investigation.
     SLM = SLM_class()
     SLM.arraySizeBit = [10, 10]  # 1024 x 1024 compute grid
     SLM.image_init(
         initGaussianPhase_user_defined=np.zeros((1024, 1024)), Plot=False,
+        beam_center_um=(BEAM_CENTER_DX_UM, BEAM_CENTER_DY_UM),
     )
     W, H = SLM.SLMRes  # (1272, 1024)
     cx, cy = W // 2, H // 2
@@ -82,31 +107,37 @@ def main():
           f"focal pitch = {SLM.Focalpitchx:.3f} um/px")
     print(f"SLM native:   ({H}, {W})")
 
-    # --- 2. Generate gaussian-line target on the 1024x1024 computation grid ---
-    targetAmp = SLM.gaussian_line_target(
-        length=gline_length,
-        width_sigma=gline_width_sigma,
-        angle=gline_angle,
-        phase_gradient=gline_phase_gradient,
+    # --- 2. Generate light-sheet target on the 1024x1024 computation grid ---
+    targetAmp = SLM.light_sheet_target(
+        flat_width=sheet_flat_width,
+        gaussian_sigma=sheet_gaussian_sigma,
+        angle=sheet_angle,
+        edge_sigma=sheet_edge_sigma,
     )
     print(
-        f"\n[TARGET] gaussian line: length={gline_length:.0f}px "
-        f"width_sigma={gline_width_sigma:.0f}px angle={gline_angle:.2f} rad "
+        f"\n[TARGET] light sheet: flat_width={sheet_flat_width:.0f}px "
+        f"gauss_sigma={sheet_gaussian_sigma:.0f}px edge_sigma={sheet_edge_sigma:.0f}px "
         f"dtype={targetAmp.dtype} shape={targetAmp.shape} "
         f"nonzero={np.count_nonzero(targetAmp)}"
     )
 
-    # --- 3. Build the paper's analytical initial phase ---
-    init_phi = _initial_phase(
-        (int(SLM.ImgResY), int(SLM.ImgResX)),
-        CGMConfig(R=cgm_R, D=cgm_D, theta=cgm_theta),
+    # --- 3. Build the stationary-phase analytical initial phase ---
+    # Closed-form 1D top-hat seed from references/Top Hat Beam.pdf, plus
+    # a cylindrical Fresnel lens along the perpendicular axis to pre-
+    # broaden the natural focal Gaussian (lambda*f/(pi*w0) ~10.6 um) up to
+    # the target's perpendicular 1/e^2 intensity radius
+    # (gaussian_sigma * sqrt(2) * Focalpitchy ~56 um).  Deep in the
+    # geom-optics regime: 538 um flat-top vs 10.6 um diffraction = ~50x.
+    init_phi = SLM.stationary_phase_sheet(
+        flat_width=sheet_flat_width,
+        gaussian_sigma=sheet_gaussian_sigma,
+        angle=sheet_angle,
+        center=None,
     )
+    print(f"[SEED] stationary-phase initial guess: "
+          f"min={init_phi.min():.3f} max={init_phi.max():.3f} rad")
 
     # --- 4. Run CGM on the compute grid via torch/CUDA ---
-    # eta_min=0.05 forces CGM to find a higher-efficiency solution.  Default (0) lets
-    # CGM converge to F~1 with eta~0.5%, where the D-grating-deflected zero-order
-    # overwhelms the target shape on hardware.  eta_min=0.05 gives ~10x more light in
-    # the target region at a small fidelity cost (F ~0.99 still).
     cgm_device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"\n[CGM] running {cgm_max_iterations} iterations on "
           f"{SLM.ImgResY}x{SLM.ImgResX} grid (device={cgm_device})...")
@@ -117,7 +148,7 @@ def main():
         torch.from_numpy(targetAmp),
         max_iterations=cgm_max_iterations,
         steepness=cgm_steepness,
-        eta_min=0.1,
+        eta_min=setting_eta,
         Plot=False,
     )
     cgm_wall_time = time.perf_counter() - t0
@@ -125,7 +156,6 @@ def main():
     print(f"[CGM] done in {cgm_wall_time:.2f} s "
           f"({per_iter_ms:.1f} ms/iter)")
 
-    # Wrap phase to [-pi, pi] before cropping.
     phase_np = SLM_Phase.cpu().clone().numpy()
     phase_wrapped = np.angle(np.exp(1j * phase_np))
     SLM_screen_raw = SLM.phase_to_screen(phase_wrapped)
@@ -158,13 +188,15 @@ def main():
         slm_screen=SLM_screen_final,
     )
     payload_size_kb = int(np.ceil(
-        __import__("os").path.getsize(PAYLOAD_PATH) / 1024
+        os.path.getsize(PAYLOAD_PATH) / 1024
     ))
     print(f"\n[SAVE] payload:  {PAYLOAD_PATH}  ({payload_size_kb} KB)")
 
     # --- 9. Save params.json ---
     params = {
         "algorithm": "CGM",
+        "init_phase_method": "stationary_phase_2d",
+        "eta_min": setting_eta,
         "payload": PAYLOAD_PATH,
         "compute_grid": [int(SLM.ImgResY), int(SLM.ImgResX)],
         "slm_native": [int(H), int(W)],
@@ -181,17 +213,15 @@ def main():
         "calibration_applied_on_linux": True,
         "calibration_bmp": "calibration/CAL_LSH0905549_1013nm.bmp",
         "LUT": LUT,
-        "target": "gaussian_line",
-        "gline_length_px": gline_length,
-        "gline_length_um_focal": round(float(gline_length * SLM.Focalpitchx), 2),
-        "gline_width_sigma_px": gline_width_sigma,
-        "gline_angle_rad": gline_angle,
-        "gline_phase_gradient": gline_phase_gradient,
+        "beam_center_um": [BEAM_CENTER_DX_UM, BEAM_CENTER_DY_UM],
+        "target": "light_sheet",
+        "sheet_flat_width_px": sheet_flat_width,
+        "sheet_flat_width_um_focal": round(float(sheet_flat_width * SLM.Focalpitchx), 2),
+        "sheet_gaussian_sigma_px": sheet_gaussian_sigma,
+        "sheet_angle_rad": sheet_angle,
+        "sheet_edge_sigma_px": sheet_edge_sigma,
         "cgm_max_iterations": cgm_max_iterations,
         "cgm_steepness": cgm_steepness,
-        "cgm_R": cgm_R,
-        "cgm_D": cgm_D,
-        "cgm_theta": cgm_theta,
         "cgm_wall_time_s": round(cgm_wall_time, 3),
         "cgm_per_iter_ms": round(per_iter_ms, 2),
         "cgm_device": cgm_device,
@@ -207,7 +237,7 @@ def main():
     # --- 10. Save preview.pdf ---
     _save_preview(
         SLM.initGaussianAmp, targetAmp, E_out_1024, region_np,
-        SLM_screen_final, SLM_Phase.cpu().numpy(), F, eta,
+        SLM_screen_final, F, eta, init_phi,
     )
     print(f"[SAVE] preview: {PREVIEW_PATH}")
 
@@ -221,7 +251,8 @@ def main():
     print("=" * 72)
 
 
-def _save_preview(input_amp, target, E_out, region, slm_screen_final, slm_phase_full, F, eta):
+def _save_preview(input_amp, target, E_out, region, slm_screen_final,
+                  F, eta, init_phi):
     """6-panel PDF: input / target intensity+phase / output intensity+phase / screen."""
     target_mask = mask_from_target(target)
 
@@ -231,11 +262,13 @@ def _save_preview(input_amp, target, E_out, region, slm_screen_final, slm_phase_
     axes[0, 0].set_title("Input amplitude |S|\n(Gaussian, 1024 grid)")
 
     axes[0, 1].imshow(np.abs(target) ** 2, cmap="hot")
-    axes[0, 1].set_title("Target |tau|^2\n(gaussian line)")
+    axes[0, 1].set_title("Target |tau|^2\n(light sheet)")
 
-    target_phase_masked = np.where(target_mask > 0, np.angle(target), np.nan)
-    axes[0, 2].imshow(target_phase_masked, cmap="twilight", vmin=-np.pi, vmax=np.pi)
-    axes[0, 2].set_title("Target phase arg(tau)\n(flat)")
+    # Swap target-phase panel for the stationary-phase initial guess,
+    # so we can eyeball whether the seed looks like the expected
+    # smooth 1D stationary-phase pattern.
+    axes[0, 2].imshow(init_phi, cmap="twilight")
+    axes[0, 2].set_title("Stationary-phase seed\n(pre-CGM init)")
 
     out_int = (np.abs(E_out) ** 2) * region
     axes[1, 0].imshow(out_int, cmap="hot")

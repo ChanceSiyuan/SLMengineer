@@ -1,6 +1,8 @@
 {
   "algorithm": "CGM",
-  "payload": "scripts/sheet/testfile_sheet_payload.npz",
+  "init_phase_method": "stationary_phase_2d",
+  "eta_min": 0.0,
+  "payload": "payload/sheet/testfile_sheet_stationary_payload.npz",
   "compute_grid": [
     1024,
     1024
@@ -9,8 +11,8 @@
     1024,
     1272
   ],
-  "focal_pitch_x_um_per_px": 14.2453,
-  "focal_pitch_y_um_per_px": 14.2453,
+  "focal_pitch_x_um_per_px": 15.8281,
+  "focal_pitch_y_um_per_px": 15.8281,
   "runner_defaults": {
     "etime_us": 20,
     "n_avg": 10,
@@ -31,20 +33,17 @@
   ],
   "target": "light_sheet",
   "sheet_flat_width_px": 34,
-  "sheet_flat_width_um_focal": 484.34,
+  "sheet_flat_width_um_focal": 538.16,
   "sheet_gaussian_sigma_px": 2.5,
   "sheet_angle_rad": 0,
   "sheet_edge_sigma_px": 0.1,
-  "cgm_max_iterations": 4000,
+  "cgm_max_iterations": 2000,
   "cgm_steepness": 9,
-  "cgm_R": 0,
-  "cgm_D": -1.0471975511965976,
-  "cgm_theta": 0.7853981633974483,
-  "cgm_wall_time_s": 135.324,
-  "cgm_per_iter_ms": 33.83,
+  "cgm_wall_time_s": 21.568,
+  "cgm_per_iter_ms": 10.78,
   "cgm_device": "cuda",
-  "final_fidelity": 0.905089,
-  "final_one_minus_fidelity": 0.09491,
-  "final_efficiency": 0.060739,
-  "timestamp_local": "2026-04-14T16:44:22"
+  "final_fidelity": 0.999999,
+  "final_one_minus_fidelity": 1.375e-06,
+  "final_efficiency": 0.023215,
+  "timestamp_local": "2026-04-15T15:03:38"
 }

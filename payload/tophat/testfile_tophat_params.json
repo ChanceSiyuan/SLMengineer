@@ -1,6 +1,6 @@
 {
   "algorithm": "CGM",
-  "payload": "scripts/tophat/testfile_tophat_payload.npz",
+  "payload": "payload/tophat/testfile_tophat_payload.npz",
   "compute_grid": [
     1024,
     1024
@@ -33,11 +33,11 @@
   "cgm_R": 0,
   "cgm_D": -0.2617993877991494,
   "cgm_theta": -0.7853981633974483,
-  "cgm_wall_time_s": 227.428,
-  "cgm_per_iter_ms": 113.71,
+  "cgm_wall_time_s": 55.768,
+  "cgm_per_iter_ms": 27.88,
   "cgm_device": "cuda",
-  "final_fidelity": 0.964234,
-  "final_one_minus_fidelity": 0.03577,
-  "final_efficiency": 0.047665,
-  "timestamp_local": "2026-04-14T14:32:28"
+  "final_fidelity": 0.96422,
+  "final_one_minus_fidelity": 0.03578,
+  "final_efficiency": 0.049253,
+  "timestamp_local": "2026-04-16T14:11:41"
 }

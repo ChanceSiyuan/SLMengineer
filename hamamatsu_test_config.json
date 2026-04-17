@@ -2,8 +2,8 @@
     "pixelpitch": 12.5,
     "SLMRes": [1272, 1024],
     "arraySizeBit": [12, 12],
-    "beamwaist": 5100,
-    "focallength": 180000,
+    "beamwaist": 5000,
+    "focallength": 200000,
 
     "Loop": 25,
     "threshold": 0.01,

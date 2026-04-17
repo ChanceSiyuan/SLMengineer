@@ -6,7 +6,7 @@ Usage::
     uv run python scripts/analyze_sweep.py                    # default sweep dir
     uv run python scripts/analyze_sweep.py data/sweep_tophat  # custom data dir
 
-Reads sweep_manifest.json from scripts/sweep_tophat/ and camera .npy files
+Reads sweep_manifest.json from scripts/sweep_tophat/ and camera .bmp files
 from the data directory. Outputs a results table and summary PDF.
 """
 from __future__ import annotations
@@ -42,11 +42,11 @@ def main():
     for entry in manifest:
         idx = entry["index"]
         prefix = f"sweep_tophat_{idx:03d}"
-        after_path = f"{data_dir}/{prefix}_after.npy"
-        before_path = f"{data_dir}/{prefix}_before.npy"
+        after_path = f"{data_dir}/{prefix}_after.bmp"
+        before_path = f"{data_dir}/{prefix}_before.bmp"
 
         if not os.path.exists(after_path) or not os.path.exists(before_path):
-            print(f"  [{idx:03d}] SKIP — .npy files missing")
+            print(f"  [{idx:03d}] SKIP — .bmp files missing")
             results.append(None)
             continue
 

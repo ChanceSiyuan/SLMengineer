@@ -15,8 +15,9 @@ It is a minimal, **self-contained** hardware runner that knows how to:
   3. Capture a "before" image with the SLM showing a blank screen.
   4. Upload the loaded screen and capture an "after" image.
   5. Compute the difference image.
-  6. Save all three arrays (.npy), PNG previews, and per-capture stats
-     (JSON) into ``data/<prefix>_*``.
+  6. Save two 8-bit BMP frames (``<prefix>_before.bmp`` /
+     ``<prefix>_after.bmp``) plus per-capture stats (JSON) into
+     ``data/<prefix>_*``.
 
 It does **NOT**:
   - import torch, slm.cgm, scipy.optimize, or any CGM logic
@@ -33,10 +34,11 @@ Usage::
                      --output-prefix testfile_lg \\
                      [--etime-us 4000] [--n-avg 10] [--monitor 1]
 
-The Linux-side orchestrator ``scripts/testfile_lg.sh`` invokes this
-script via ssh after scp'ing the payload into ``incoming\\``.  After the
-runner completes, the orchestrator scp's ``data\\<prefix>_*`` back to
-the Linux ``./data/`` directory.
+The Linux-side orchestrator ``push_run.sh`` (at the SLMengineer repo
+root) invokes this script via ssh after scp'ing the payload into
+``incoming\\<sub>\\``.  After the runner completes, it scp's
+``data\\<sub>\\<prefix>_{before,after}.bmp`` + ``_run.json`` back to
+the Linux ``./data/<sub>/`` directory.
 
 See ``README.md`` in this directory for the one-time Windows setup
 (venv, slmpy, Vimba SDK, PYTHONPATH).
@@ -49,9 +51,7 @@ import time
 from pathlib import Path
 
 import numpy as np
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+from PIL import Image
 
 # The runner reuses the SLM display / camera wrappers from the main
 # SLMengineer repo's src/slm/ package (already installed on the
@@ -69,6 +69,11 @@ from slm.display import SLMdisplay  # noqa: E402
 from slm.camera import VimbaCamera   # noqa: E402
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+
+def _to_uint8(frame: np.ndarray) -> np.ndarray:
+    """Round a float frame to 8-bit grayscale, clipped to [0, 255]."""
+    return np.clip(np.round(frame), 0, 255).astype(np.uint8)
 
 
 def multi_capture(camera, etime_us, n_frames):
@@ -95,18 +100,6 @@ def capture_stats(image, label):
     }
 
 
-def save_preview(name, img, out_dir, cmap="hot"):
-    """Save a labelled PNG preview for one captured frame."""
-    fig, ax = plt.subplots(figsize=(10, 8))
-    im = ax.imshow(img, cmap=cmap, vmin=img.min(), vmax=img.max())
-    ax.set_title(
-        f"{name}\nmin={img.min():.1f} max={img.max():.1f} mean={img.mean():.2f}"
-    )
-    plt.colorbar(im, ax=ax)
-    fig.savefig(out_dir / f"{name}.png", dpi=150)
-    plt.close(fig)
-
-
 def main():
     ap = argparse.ArgumentParser(
         description="Windows hardware runner for precomputed SLM phase payloads."
@@ -130,6 +123,12 @@ def main():
     ap.add_argument(
         "--monitor", type=int, default=1,
         help="SLM display monitor index (default: 1).",
+    )
+    ap.add_argument(
+        "--hold-on", action="store_true",
+        help="Display the payload screen on the SLM and keep it until the "
+             "process is killed (Ctrl+C).  Skips all camera captures and "
+             "output saving.  Default: off.",
     )
     args = ap.parse_args()
 
@@ -170,6 +169,21 @@ def main():
     print(f"\n[2/5] Opening SLM on monitor {args.monitor}...")
     slm = SLMdisplay(monitor=args.monitor, isImageLock=True)
 
+    # ─── Hold-on mode: display payload and wait indefinitely ────────
+    if args.hold_on:
+        print("\n[hold-on] Uploading payload screen to SLM and holding.")
+        print("[hold-on] Camera capture and output saving are SKIPPED.")
+        print("[hold-on] Kill the process (Ctrl+C) to release the SLM.")
+        try:
+            slm.updateArray(slm_screen)
+            while True:
+                time.sleep(1.0)
+        except KeyboardInterrupt:
+            print("\n[hold-on] Interrupted, releasing SLM.")
+        finally:
+            slm.close()
+        return
+
     try:
         # ─── Capture "before" (SLM blank) ───────────────────────────
         print(f"\n[3/5] Capturing 'before' ({args.n_avg} frames @ "
@@ -198,15 +212,12 @@ def main():
         slm.close()
 
     # ─── Save outputs to data/ ──────────────────────────────────────
+    before_bmp = out_dir / f"{prefix}_before.bmp"
+    after_bmp  = out_dir / f"{prefix}_after.bmp"
+    before_bmp.parent.mkdir(parents=True, exist_ok=True)
     print(f"\n[5/5] Saving outputs to {out_dir}/...")
-    np.save(out_dir / f"{prefix}_before.npy", img_before)
-    np.save(out_dir / f"{prefix}_after.npy",  img_after)
-    diff = img_after - img_before
-    np.save(out_dir / f"{prefix}_diff.npy", diff)
-
-    save_preview(f"{prefix}_before", img_before, out_dir, cmap="hot")
-    save_preview(f"{prefix}_after",  img_after,  out_dir, cmap="hot")
-    save_preview(f"{prefix}_diff",   diff,       out_dir, cmap="RdBu_r")
+    Image.fromarray(_to_uint8(img_before), mode="L").save(before_bmp, format="BMP")
+    Image.fromarray(_to_uint8(img_after),  mode="L").save(after_bmp,  format="BMP")
 
     run_meta = {
         "payload": str(payload_path),
@@ -219,16 +230,13 @@ def main():
         "timestamp_local": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime()),
         "before": capture_stats(img_before, "SLM blank"),
         "after":  capture_stats(img_after,  "SLM payload screen"),
-        "diff_max": round(float(diff.max()), 2),
-        "diff_min": round(float(diff.min()), 2),
     }
     with open(out_dir / f"{prefix}_run.json", "w", encoding="utf-8") as f:
         json.dump(run_meta, f, ensure_ascii=False, indent=2)
 
     print(
-        f"  {prefix}_before.npy / .png\n"
-        f"  {prefix}_after.npy  / .png\n"
-        f"  {prefix}_diff.npy   / .png\n"
+        f"  {prefix}_before.bmp\n"
+        f"  {prefix}_after.bmp\n"
         f"  {prefix}_run.json"
     )
     print("\nDone.")

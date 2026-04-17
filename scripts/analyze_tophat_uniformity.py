@@ -13,7 +13,14 @@ import json
 import sys
 
 import numpy as np
+from PIL import Image
 import matplotlib
+
+
+def _load_capture_bmp(path) -> np.ndarray:
+    """Load an 8-bit grayscale BMP capture into a float64 array."""
+    return np.asarray(Image.open(path).convert("L"), dtype=np.float64)
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
@@ -21,8 +28,8 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 PREFIX = "testfile_tophat_optimized"
 PAYLOAD = f"scripts/{PREFIX}_payload.npz"
-CAMERA_AFTER = f"data/{PREFIX}_after.npy"
-CAMERA_BEFORE = f"data/{PREFIX}_before.npy"
+CAMERA_AFTER = f"data/{PREFIX}_after.bmp"
+CAMERA_BEFORE = f"data/{PREFIX}_before.bmp"
 RUN_JSON = f"data/{PREFIX}_run.json"
 PARAMS_JSON = f"scripts/{PREFIX}_params.json"
 OUTPUT_PDF = "scripts/tophat_uniformity_analysis.pdf"
@@ -94,8 +101,8 @@ def main():
     print(f"[SIM] Intensity uniformity (std/mean) = {unif_sim:.4f} ({unif_sim*100:.2f}%)")
 
     # --- Load camera data ---
-    I_after = np.load(CAMERA_AFTER).astype(np.float64)
-    I_before = np.load(CAMERA_BEFORE).astype(np.float64)
+    I_after = _load_capture_bmp(CAMERA_AFTER)
+    I_before = _load_capture_bmp(CAMERA_BEFORE)
     I_signal = I_after - I_before
 
     run_meta = json.load(open(RUN_JSON))

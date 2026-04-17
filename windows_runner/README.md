@@ -18,16 +18,19 @@ C:\Users\Galileo\slm_runner\
 └── README.md         (this file)
 ```
 
-The Linux-side orchestrator
-(`scripts/testfile_lg.sh` in the main SLMengineer repo) is the user-facing
-entry point. It:
+The Linux-side orchestrator (`push_run.sh` at the SLMengineer repo
+root) is the universal entry point. Given a local
+`payload/<sub>/<base>_payload.npz`, it:
 
-1. runs CGM locally on the RTX 3090 and produces
-   `scripts/testfile_lg_payload.npz`,
-2. `scp`'s the payload into `C:\Users\Galileo\slm_runner\incoming\`,
-3. `ssh`'s into the Windows box and runs
-   `python runner.py --payload incoming\<prefix>_payload.npz --output-prefix <prefix>`,
-4. `scp`'s the captured data back to the Linux `./data/` directory.
+1. `scp`'s the payload (+ sibling params.json) into
+   `C:\Users\Galileo\slm_runner\incoming\<sub>\`,
+2. `ssh`'s into the Windows box and runs `slmrun.bat --payload
+   incoming\<sub>\<base>_payload.npz --output-prefix <sub>\<base>`,
+3. `scp`'s the captured `data\<sub>\<base>_{before,after}.bmp` +
+   `_run.json` back to `./data/<sub>/` on Linux.
+
+The CGM/WGS compute itself runs earlier, locally, via
+`uv run python scripts/<sub>/testfile_<sub>.py`.
 
 ## One-time Windows setup
 
@@ -41,8 +44,8 @@ mkdir C:\Users\Galileo\slm_runner\data
 
 ### 2. Copy `runner.py` into place
 
-From the main SLMengineer repo (which is already synced to
-`C:\Users\Galileo\SLMengineer\` via `ai_slm_loop.sh`):
+From the main SLMengineer repo (which should be cloned / synced to
+`C:\Users\Galileo\SLMengineer\`):
 
 ```cmd
 copy C:\Users\Galileo\SLMengineer\windows_runner\runner.py ^
@@ -102,34 +105,38 @@ and adjust.
 
 ```bash
 # On the Linux dev box, from the SLMengineer repo root:
-./scripts/testfile_lg.sh
+uv run python scripts/lg/testfile_lg.py            # local CGM compute
+./push_run.sh payload/lg/testfile_lg_payload.npz   # push / run / pull
 ```
 
-That single command covers:
+`push_run.sh` covers:
 
-- **[1/4]** local CGM compute (~100 s on 4096^2 grid, RTX 3090 complex64)
-- **[2/4]** scp the payload .npz + params .json into `incoming\`
-- **[3/4]** ssh trigger `runner.py` on this box
-- **[4/4]** scp results back into the Linux `./data/` directory
+- **[1/4]** ensure `incoming\<sub>\` exists on Windows
+- **[2/4]** scp the payload .npz + params.json into `incoming\<sub>\`
+- **[3/4]** ssh trigger `slmrun.bat` → `runner.py`
+- **[4/4]** scp `data\<sub>\<base>_{before,after}.bmp` + `_run.json`
+  back into `./data/<sub>/`
 
-Expected wall time per experiment: **~2 minutes** (CGM dominates; hardware
-I/O and file transfer are < 10 s combined over gigabit).
+Add `--hold-on` to display the payload on the SLM indefinitely (no
+capture, no pull). Expected wall time per experiment: **~2 minutes**
+(CGM dominates; hardware I/O and file transfer are < 10 s combined
+over gigabit).
 
 ## Writing a new experiment
 
 The Windows runner is target-agnostic. To run a different experiment
 (e.g. a new target or a different optimisation algorithm), you only
-need to add files on the **Linux** side:
+need to add one file on the **Linux** side:
 
-1. Copy `scripts/testfile_lg.py` to `scripts/<new_experiment>.py` and
-   change the target / CGM config / payload filename inside.
-2. Copy `scripts/testfile_lg.sh` to `scripts/<new_experiment>.sh` and
-   update the `PREFIX` variable and `PULL_FILES` list.
-3. Run `./scripts/<new_experiment>.sh`.
+1. Copy `scripts/lg/testfile_lg.py` to
+   `scripts/<shape>/testfile_<shape>.py`, update `OUTPUT_DIR =
+   "payload/<shape>"`, and change the target / CGM config as needed.
+2. Run it, then push/run via
+   `./push_run.sh payload/<shape>/testfile_<shape>_payload.npz`.
 
-The Windows runner (`runner.py`) stays unchanged across all experiments
-as long as the payload format stays the same (`.npz` with a
-`slm_screen` uint8 key of shape `(SLM_H, SLM_W)`).
+The Windows runner (`runner.py`) and the universal `push_run.sh` stay
+unchanged across all experiments as long as the payload format stays
+the same (`.npz` with a `slm_screen` uint8 key of shape `(SLM_H, SLM_W)`).
 
 ## Troubleshooting
 
@@ -143,7 +150,7 @@ as long as the payload format stays the same (`.npz` with a
   the main SLMengineer repo at `C:\Users\Galileo\SLMengineer\`. Edit
   the `_MAIN_REPO_SRC` constant near the top of `runner.py`.
 - **Calibration correction looks wrong**: the correction is applied on
-  the **Linux** side by `scripts/testfile_lg.py` via
+  the **Linux** side by `scripts/<shape>/testfile_<shape>.py` via
   `slm.imgpy.SLM_screen_Correct` using
   `calibration/CAL_LSH0905549_1013nm.bmp`. If you need to change the
   calibration file, edit the Linux script — the runner has no

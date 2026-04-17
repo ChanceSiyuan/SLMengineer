@@ -64,6 +64,7 @@ class CGMConfig:
     track_fidelity: bool = False  # record fidelity each iteration (slower)
     efficiency_weight: float = 0.0  # weight for (1-η)^2 efficiency penalty
     eta_min: float = 0.0  # minimum efficiency floor; penalty when η < eta_min
+    eta_steepness: float | None = None  # separate 10^s scale for eta penalty; None → uses steepness
     initial_phase: np.ndarray | None = (
         None  # measured/custom phase; overrides analytical
     )
@@ -202,6 +203,7 @@ def _run_cgm_torch(
     back_A_t = _back_t(target_masked_t, sinc_env_t)
 
     scale = 10.0 ** config.steepness
+    eta_scale = 10.0 ** (config.eta_steepness if config.eta_steepness is not None else config.steepness)
     ew = float(config.efficiency_weight)
     em = float(config.eta_min)
 
@@ -222,10 +224,10 @@ def _run_cgm_torch(
             if P.item() > 0.0:
                 eta = norm_B ** 2 / P
                 if ew > 0.0:
-                    cost = cost + ew * scale * (1.0 - eta) ** 2
+                    cost = cost + ew * eta_scale * (1.0 - eta) ** 2
                 if em > 0.0:
                     active = (eta < em).to(rdtype)
-                    cost = cost + active * scale * (em - eta) ** 2
+                    cost = cost + active * eta_scale * (em - eta) ** 2
         return cost
 
     def cost_and_grad(phi):
@@ -255,12 +257,12 @@ def _run_cgm_torch(
                 eta = norm_B ** 2 / P
                 d_eta = 2.0 * raw_B / P
                 if ew > 0.0:
-                    cost = cost + ew * scale * (1.0 - eta) ** 2
-                    grad = grad - 2.0 * ew * scale * (1.0 - eta) * d_eta
+                    cost = cost + ew * eta_scale * (1.0 - eta) ** 2
+                    grad = grad - 2.0 * ew * eta_scale * (1.0 - eta) * d_eta
                 if em > 0.0:
                     active = (eta < em).to(rdtype)
-                    cost = cost + active * scale * (em - eta) ** 2
-                    grad = grad - 2.0 * active * scale * (em - eta) * d_eta
+                    cost = cost + active * eta_scale * (em - eta) ** 2
+                    grad = grad - 2.0 * active * eta_scale * (em - eta) * d_eta
         return cost, grad, E_out
 
     def align_initial_phase(phi):
@@ -286,8 +288,11 @@ def _run_cgm_torch(
         best_k = int(np.argmin(probe_costs))
         best_cost = probe_costs[best_k]
         if best_cost >= cost0:
-            # No improvement; try tiny steps
-            for a in (1e-5 * base, 1e-4 * base):
+            # No improvement from main probes; try a wider fallback range
+            # before giving up.  Original used only 2 steps; the wider range
+            # prevents premature termination on flat cost landscapes.
+            for a in (1e-6 * base, 1e-5 * base, 1e-4 * base,
+                      1e-3 * base, 3e-3 * base, 1e-2 * base):
                 c = cost_value(phi + a * direction).item()
                 if c < cost0:
                     return a
@@ -368,10 +373,14 @@ def _run_cgm_torch(
         ):
             break
 
-        # Fletcher-Reeves direction update with periodic restart
+        # Polak-Ribière+ direction update with periodic restart.
+        # PR+ is more robust than Fletcher-Reeves on non-convex landscapes:
+        # max(0, β) clips negative β, auto-resetting to steepest descent
+        # when the gradient reverses direction.
         new_grad_norm_sq_t = (new_grad_t * new_grad_t).sum()
         if grad_norm_sq_t.item() > 0.0 and (i + 1) % 50 != 0:
-            beta = float((new_grad_norm_sq_t / grad_norm_sq_t).item())
+            pr_num = ((new_grad_t - grad_t) * new_grad_t).sum()
+            beta = max(0.0, float((pr_num / grad_norm_sq_t).item()))
         else:
             beta = 0.0  # restart: steepest descent
         direction_t = -new_grad_t + beta * direction_t
@@ -439,19 +448,21 @@ def _cost_function(
     steepness,
     efficiency_weight=0.0,
     eta_min=0.0,
+    eta_steepness=None,
 ):
     """Cost function (numpy shim for tests)."""
     overlap = _compute_overlap(output_field, target_field, measure_region)
     cost = 10 ** steepness * (1.0 - np.real(overlap)) ** 2
+    e_scale = 10 ** (eta_steepness if eta_steepness is not None else steepness)
     if efficiency_weight > 0 or eta_min > 0:
         intensity = np.abs(output_field) ** 2
         P_total = np.sum(intensity)
         if P_total > 0:
             eta = np.sum(intensity * measure_region) / P_total
             if efficiency_weight > 0:
-                cost += efficiency_weight * 10 ** steepness * (1.0 - eta) ** 2
+                cost += efficiency_weight * e_scale * (1.0 - eta) ** 2
             if eta_min > 0 and eta < eta_min:
-                cost += 10 ** steepness * (eta_min - eta) ** 2
+                cost += e_scale * (eta_min - eta) ** 2
     return float(cost)
 
 
@@ -464,6 +475,7 @@ def _cost_gradient(
     efficiency_weight=0.0,
     eta_min=0.0,
     sinc_env=None,
+    eta_steepness=None,
 ):
     """Analytical cost gradient dC/d(phi) (numpy shim for tests)."""
     A = target_field * measure_region
@@ -485,15 +497,16 @@ def _cost_gradient(
     d_overlap = d_Re_r / (norm_A * norm_B) - overlap_real * d_norm_B / norm_B
     grad = -2.0 * 10 ** steepness * (1.0 - overlap_real) * d_overlap
 
+    e_scale = 10 ** (eta_steepness if eta_steepness is not None else steepness)
     if efficiency_weight > 0 or eta_min > 0:
         P_total = np.sum(np.abs(E_out) ** 2)
         if P_total > 0:
             eta = float(norm_B ** 2 / P_total)
             d_eta = 2.0 * raw_B / P_total
             if efficiency_weight > 0:
-                grad += -2.0 * efficiency_weight * 10 ** steepness * (1.0 - eta) * d_eta
+                grad += -2.0 * efficiency_weight * e_scale * (1.0 - eta) * d_eta
             if eta_min > 0 and eta < eta_min:
-                grad += -2.0 * 10 ** steepness * (eta_min - eta) * d_eta
+                grad += -2.0 * e_scale * (eta_min - eta) * d_eta
 
     return grad
 
@@ -621,6 +634,7 @@ def CGM_phase_generate(
     theta: float = 0.0,
     efficiency_weight: float = 0.0,
     eta_min: float = 0.0,
+    eta_steepness: float | None = None,
     fill_factor: float = 1.0,
     margin: int = 5,
     convergence_threshold: float = 1e-5,
@@ -698,6 +712,7 @@ def CGM_phase_generate(
         theta=theta,
         efficiency_weight=efficiency_weight,
         eta_min=eta_min,
+        eta_steepness=eta_steepness,
         fill_factor=fill_factor,
         device=str(run_device),
     )

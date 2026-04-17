@@ -1,14 +1,26 @@
 # scripts/sheet/ — light-sheet SLM pipeline + issue #17 sweep results
 
+> **Pipeline note (current):** The per-shape orchestrator shell scripts
+> (`testfile_sheet.sh`, `run_one.sh`, `crop_after.py`) have been replaced
+> by the universal `push_run.sh` at the repo root. Captures are now
+> BMP-only (no `.npy`/`.png` previews, no diff). The sweep logic
+> (`sweep_one.py` + `analyze_sweep_sheet.py`) still works — you just
+> drive it per-index with `./push_run.sh payload/sheet/NNN_payload.npz`
+> between `sweep_one.py` and `analysis_sheet.py`. Sections below that
+> describe the old multi-script pipeline are kept as historical context
+> for the issue #17 results.
+
 ## Overview
 `scripts/sheet/` holds the whole CGM → SLM → camera → analysis loop
 for a 1D top-hat ("light sheet") target on the Hamamatsu LCOS-SLM +
 Allied Vision camera rig. Two workflows live here:
 
-1. **single-shot**: `testfile_sheet.py` + `testfile_sheet.sh` —
-   compute one payload with one set of parameters, push it to the
-   Windows runner, capture before/after frames.
-2. **parameter sweep**: `sweep_one.py` + `run_one.sh` — drive a
+1. **single-shot**: `testfile_sheet.py` → `./push_run.sh
+   payload/sheet/testfile_sheet_payload.npz` — compute one payload with
+   one set of parameters, push it to the Windows runner, capture
+   before/after frames.
+2. **parameter sweep**: `sweep_one.py --index N` → `./push_run.sh
+   payload/sheet/NNN_payload.npz` → `analysis_sheet.py` — drive a
    multi-point sweep one index at a time, with per-point hardware
    analysis between shots. Used for GitHub issue #17.
 
@@ -60,28 +72,23 @@ investigation. See **Open questions** below.
 ```
 scripts/sheet/
 ├── testfile_sheet.py         # single-shot CGM → payload .npz
-├── testfile_sheet.sh         # push/run/pull orchestrator for testfile_sheet
+├── testfile_sheet_stationary.py  # same target, stationary-phase seed
 ├── sweep_sheet_config.json   # sweep grid (base + per-param lists)
 ├── sweep_sheet.py            # module only — shared helpers (setup_slm,
 │                             #   run_cgm, apply_post_processing, save_preview,
 │                             #   TIER1_PARAMS, SLM_REINIT_PARAMS, OUT_DIR)
 ├── sweep_one.py              # CLI: generate ONE sweep point by index,
 │                             #   upsert its entry into sweep_manifest.json
-├── run_one.sh                # shell: per-point push → run → remote crop →
-│                             #   pull → analyze (uses sweep_one.py under the hood)
-├── crop_after.py             # helper pushed to the Windows runner so that
-│                             #   _after.npy gets cropped to the sheet ROI
-│                             #   before being scp'd back (~70× pull speedup)
 ├── analysis_sheet.py         # single-capture analyzer (CLI + importable lib)
 ├── analyze_sweep_sheet.py    # aggregate per-point analyses → plots + Pareto +
 │                             #   best_config.json
 └── sweep_journal.md          # this file
 ```
 
-All per-point payloads, previews, and manifests live in
-`scripts/sweep_sheet/` (gitignored / wiped during cleanup — they
-regenerate from the config + CGM deterministically). Hardware
-captures land in `data/sweep_sheet/`.
+Per-point payloads / previews / manifests live in `payload/sheet/`
+(regenerate deterministically from the config + CGM). Hardware
+captures land in `data/sweep_sheet/` as `*_before.bmp` / `*_after.bmp`
++ `*_run.json`.
 
 ---
 
@@ -89,28 +96,32 @@ captures land in `data/sweep_sheet/`.
 
 ### Single-shot (one payload, one capture)
 ```bash
-./scripts/sheet/testfile_sheet.sh
+uv run python scripts/sheet/testfile_sheet.py
+./push_run.sh payload/sheet/testfile_sheet_payload.npz
 ```
-This runs `testfile_sheet.py` locally (CGM → payload .npz), `scp`s
-the payload to the Windows runner, triggers `slmrun.bat`, and pulls
-`_after.png` + `_run.json` back to `data/`. Edit the constants at
-the top of `testfile_sheet.py` to change parameters.
+The first command runs CGM locally and writes the payload / params /
+preview into `payload/sheet/`. The second pushes the payload to the
+Windows runner, triggers `slmrun.bat`, and pulls
+`data/sheet/testfile_sheet_{before,after}.bmp` + `_run.json` back.
+Edit the constants at the top of `testfile_sheet.py` to change
+parameters.
 
 ### Parameter sweep — point by point (recommended)
 1. Edit `scripts/sheet/sweep_sheet_config.json` to change `base` (the
    fixed config) or `sweep` (the parameter/value lists to scan).
 
-2. For each index `N` in `0 .. total_points - 1`, run:
+2. For each index `N` in `0 .. total_points - 1`:
    ```bash
-   ./scripts/sheet/run_one.sh N
+   uv run python scripts/sheet/sweep_one.py --index N
+   ./push_run.sh payload/sheet/$(printf %03d $N)_payload.npz
+   uv run python scripts/sheet/analysis_sheet.py \
+       --after  data/sheet/sweep_sheet_$(printf %03d $N)_after.bmp \
+       --before data/sheet/sweep_sheet_$(printf %03d $N)_before.bmp \
+       --params payload/sheet/$(printf %03d $N)_params.json \
+       --out    data/sheet/sweep_sheet_$(printf %03d $N)_analysis.json
    ```
-   This invokes `sweep_one.py --index N` (which generates the payload
-   with CGM if missing and upserts the manifest entry), then
-   `scp`s payload + params to the runner, triggers `slmrun.bat`,
-   ssh-invokes `crop_after.py` on Windows to reduce the 49 MB frame
-   to a ~300 KB ROI crop, `scp`s the crop + PNG + JSON back to
-   `data/sweep_sheet/`, and runs `analysis_sheet.py` on the pulled
-   crop.
+   `sweep_one.py` is idempotent (reuses existing payloads unless
+   `--force`) and upserts its entry into `sweep_manifest.json`.
 
 3. List deterministic index → param mapping at any time:
    ```bash
@@ -125,9 +136,9 @@ the top of `testfile_sheet.py` to change parameters.
 ### Ad-hoc capture analysis
 ```bash
 uv run python scripts/sheet/analysis_sheet.py \
-    --after  data/sweep_sheet/sweep_sheet_020_after_crop.npy \
-    --before data/sweep_sheet/sweep_sheet_000_before_crop.npy \
-    --params scripts/sheet/testfile_sheet_params.json \
+    --after  data/sheet/testfile_sheet_after.bmp \
+    --before data/sheet/testfile_sheet_before.bmp \
+    --params payload/sheet/testfile_sheet_params.json \
     --out    /tmp/analysis.json \
     --preview /tmp/analysis.png
 ```
@@ -142,7 +153,12 @@ edge to the major-axis projection, and computes three shape metrics:
 
 ---
 
-## Reproduction of the issue #17 results
+## Reproduction of the issue #17 results *(historical — old pipeline)*
+
+> The block below refers to the deprecated `run_one.sh` / `crop_after.py`
+> flow. Kept verbatim for traceability of the published issue #17
+> numbers. For new runs use the "Parameter sweep — point by point"
+> recipe at the top of this file.
 
 Full 35-point run end-to-end:
 

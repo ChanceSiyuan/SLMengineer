@@ -761,6 +761,71 @@ class SLM_class():  #用于生成输入输出振幅分布
             edge_sigma=edge_sigma,
         )
 
+    def stationary_phase_sheet(
+        self, flat_width, gaussian_sigma=None, angle=0.0, center=None,
+    ):
+        """Stationary-phase SLM seed for a light-sheet target.
+
+        Analytic 1D top-hat phase (Gaussian -> flat-top along the rotated
+        u-axis) from geometric-optics ray-density redistribution (see
+        ``references/Top Hat Beam.pdf`` and ``slm.initial_phase``).  Pass the
+        result as ``initSLMPhase`` to :func:`slm.cgm.CGM_phase_generate` to
+        warm-start CGM for a :meth:`light_sheet_target` with matching
+        arguments.
+
+        When ``gaussian_sigma`` is given, a cylindrical Fresnel lens is added
+        along the perpendicular axis to pre-broaden the natural focal-plane
+        Gaussian ``lambda*f/(pi*w0)`` up to the target's perpendicular 1/e^2
+        intensity radius (= ``gaussian_sigma * sqrt(2) * Focalpitchy``).  This
+        makes the seed a 2D match for :meth:`light_sheet_target`.  Omit
+        ``gaussian_sigma`` for pure 1D (along-line only) shaping.
+
+        Parameters
+        ----------
+        flat_width : pixels (along-line top-hat full width, same units as
+            :meth:`light_sheet_target`).
+        gaussian_sigma : pixels; 1-sigma of the target amplitude Gaussian
+            perpendicular to the line (matches
+            :meth:`light_sheet_target.gaussian_sigma`).  ``None`` disables
+            the cylindrical-lens term.
+        angle : rotation of the along-line axis (radians, 0 = horizontal).
+        center : (row, col) pixel-indexed focal-plane centre of the target,
+            or ``None`` for the grid centre.  Same convention as
+            :meth:`light_sheet_target`.
+        """
+        from slm.initial_phase import stationary_phase_light_sheet
+
+        ny, nx = int(self.ImgResY), int(self.ImgResX)
+        if center is None:
+            center_um = (0.0, 0.0)
+        else:
+            row, col = center
+            center_um = (
+                (float(col) - (nx - 1) / 2.0) * float(self.Focalpitchx),
+                (float(row) - (ny - 1) / 2.0) * float(self.Focalpitchy),
+            )
+        # The light_sheet target uses perp = exp(-v^2 / (2*sigma^2)), so the
+        # amplitude has stddev ``sigma`` and the intensity 1/e^2 radius is
+        # sigma*sqrt(2).  That's what the cylindrical-lens helper expects.
+        if gaussian_sigma is None:
+            perp_target_w_um = None
+        else:
+            perp_target_w_um = (
+                float(gaussian_sigma) * np.sqrt(2.0) * float(self.Focalpitchy)
+            )
+        return stationary_phase_light_sheet(
+            (ny, nx),
+            flat_width_um=float(flat_width) * float(self.Focalpitchx),
+            w0_um=float(self.beamwaist),
+            wavelength_um=float(self.wavelength),
+            focal_length_um=float(self.focallength) / float(self.magnification),
+            pixel_pitch_um=float(self.pixelpitch),
+            angle=float(angle),
+            center_um=center_um,
+            beam_center_um=tuple(getattr(self, "beam_center_um", (0.0, 0.0))),
+            perp_target_w_um=perp_target_w_um,
+        )
+
     def lg_mode_target(self, ell, p, w0, center=None):
         """CGM-only: Laguerre-Gaussian mode LG^p_ell with vortex phase."""
         from slm.targets import lg_mode

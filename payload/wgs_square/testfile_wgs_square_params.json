@@ -1,0 +1,38 @@
+{
+  "algorithm": "WGS",
+  "payload": "payload/wgs_square/testfile_wgs_square_payload.npz",
+  "compute_grid": [
+    4096,
+    4096
+  ],
+  "slm_native": [
+    1024,
+    1272
+  ],
+  "focal_pitch_x_um_per_px": 3.957,
+  "focal_pitch_y_um_per_px": 3.957,
+  "runner_defaults": {
+    "etime_us": 4000,
+    "n_avg": 10,
+    "monitor": 1
+  },
+  "fresnel_applied_on_linux": true,
+  "fresnel_shift_distance_um": 1000,
+  "fresnel_center_xy_px": [
+    636,
+    512
+  ],
+  "calibration_applied_on_linux": true,
+  "calibration_bmp": "calibration/CAL_LSH0905549_1013nm.bmp",
+  "LUT": 207,
+  "target": "rectangular_lattice",
+  "array_nx": 8,
+  "array_ny": 8,
+  "wgs_loops": 50,
+  "wgs_threshold": 0.005,
+  "wgs_wall_time_s": 2.986,
+  "wgs_per_iter_ms": 59.72,
+  "final_fidelity": 0.001162,
+  "final_efficiency": 0.907591,
+  "timestamp_local": "2026-04-17T07:28:56"
+}

@@ -14,12 +14,11 @@ This script runs ENTIRELY on the local (Linux+RTX 3090) box.  It does:
      the screen modulo 256, matching the ``scripts/testfile.py`` WGS workflow.
   7. Calibration correction via ``slm.imgpy.SLM_screen_Correct`` with the
      LUT + calibration BMP -- matches the testfile.py pipeline byte-for-byte.
-  8. Saves three artefacts in ``scripts/`` (so they survive the
-     ``ai_slm_loop.sh`` tar exclusions where applicable):
+  8. Saves three artefacts under ``payload/lg/``:
 
-       scripts/lg/testfile_lg_payload.npz      (slm_screen uint8 + diagnostics)
-       scripts/lg/testfile_lg_params.json      (human-readable metadata)
-       scripts/lg/testfile_lg_preview.pdf      (6-panel visualisation)
+       payload/lg/testfile_lg_payload.npz      (slm_screen uint8 + diagnostics)
+       payload/lg/testfile_lg_params.json      (human-readable metadata)
+       payload/lg/testfile_lg_preview.pdf      (6-panel visualisation)
 
 The **Windows hardware runner** lives in a separate, lightweight repo at
 ``C:\\Users\\Galileo\\slm_runner\\`` and simply loads the payload .npz,
@@ -29,14 +28,12 @@ logic stays on this (Linux) box.
 
 Next step after running this script::
 
-    ./scripts/lg/testfile_lg.sh   # pushes payload + triggers remote runner
-
-The ``.sh`` is a thin orchestrator: scp payload -> ssh runner -> scp
-results back into ./data/.
+    ./push_run.sh payload/lg/testfile_lg_payload.npz
 """
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 
@@ -53,9 +50,11 @@ from slm.targets import mask_from_target
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-PAYLOAD_PATH = "scripts/lg/testfile_lg_payload.npz"
-PARAMS_PATH = "scripts/lg/testfile_lg_params.json"
-PREVIEW_PATH = "scripts/lg/testfile_lg_preview.pdf"
+OUTPUT_DIR = "payload/lg"
+PAYLOAD_PATH = f"{OUTPUT_DIR}/testfile_lg_payload.npz"
+PARAMS_PATH = f"{OUTPUT_DIR}/testfile_lg_params.json"
+PREVIEW_PATH = f"{OUTPUT_DIR}/testfile_lg_preview.pdf"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
 def main():
@@ -227,7 +226,7 @@ def main():
     print("=" * 72)
     print("Payload ready.  Next step (pushes to Windows and runs the experiment):")
     print()
-    print("    ./scripts/lg/testfile_lg.sh")
+    print(f"    ./push_run.sh {PAYLOAD_PATH}")
     print()
     print("=" * 72)
 

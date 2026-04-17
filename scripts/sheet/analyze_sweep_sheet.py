@@ -14,9 +14,15 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from PIL import Image
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+
+def _load_capture_bmp(path) -> np.ndarray:
+    """Load an 8-bit grayscale BMP capture into a float64 array."""
+    return np.asarray(Image.open(path).convert("L"), dtype=np.float64)
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -26,9 +32,9 @@ if str(_HERE) not in sys.path:
 
 from analysis_sheet import analyze_capture  # noqa: E402
 
-SWEEP_DIR = Path("scripts/sweep_sheet")
+SWEEP_DIR = Path("payload/sheet")
 DATA_DIR = Path("data/sweep_sheet")
-OUT_DIR = Path("scripts/sweep_sheet")
+OUT_DIR = Path("payload/sheet")
 
 
 def _entry_to_params(entry: dict) -> dict:
@@ -89,10 +95,10 @@ def main():
     for entry in manifest:
         idx = entry["index"]
         prefix = f"sweep_sheet_{idx:03d}"
-        after_p = data_dir / f"{prefix}_after.npy"
-        before_p = data_dir / f"{prefix}_before.npy"
+        after_p = data_dir / f"{prefix}_after.bmp"
+        before_p = data_dir / f"{prefix}_before.bmp"
         if not after_p.is_file() or not before_p.is_file():
-            print(f"[{idx:03d}] SKIP — missing npy ({after_p.name} or {before_p.name})")
+            print(f"[{idx:03d}] SKIP — missing bmp ({after_p.name} or {before_p.name})")
             continue
 
         try:
@@ -105,7 +111,7 @@ def main():
             params = _entry_to_params(entry)
             from analysis_sheet import _build_reference, _intensity_fidelity
             y0, y1, x0, x1 = res["roi"]["bbox"]
-            roi = np.load(after_p).astype(np.float64) - np.load(before_p).astype(np.float64)
+            roi = _load_capture_bmp(after_p) - _load_capture_bmp(before_p)
             roi = roi[y0:y1, x0:x1]
             ref = _build_reference(roi.shape, params, res["fit"])
             res["metrics"].update(_intensity_fidelity(roi, ref))

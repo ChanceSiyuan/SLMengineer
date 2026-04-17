@@ -9,9 +9,9 @@ shape-fidelity metrics.
 Usage::
 
     uv run python scripts/sheet/analysis_sheet.py \\
-        --after data/testfile_sheet_after.npy \\
-        --before data/testfile_sheet_before.npy \\
-        --params scripts/sheet/testfile_sheet_params.json
+        --after data/sheet/testfile_sheet_after.bmp \\
+        --before data/sheet/testfile_sheet_before.bmp \\
+        --params payload/sheet/testfile_sheet_params.json
 
 Also importable as a library (for sweep aggregation):
 
@@ -27,7 +27,14 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from PIL import Image
 import matplotlib
+
+
+def _load_capture_bmp(path) -> np.ndarray:
+    """Load an 8-bit grayscale BMP capture into a float64 array."""
+    return np.asarray(Image.open(path).convert("L"), dtype=np.float64)
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from scipy.ndimage import median_filter, uniform_filter1d
@@ -308,8 +315,8 @@ def analyze_capture(
     preview_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Full analysis pipeline. Returns a result dict suitable for JSON."""
-    after = np.load(after_path).astype(np.float64)
-    before = np.load(before_path).astype(np.float64)
+    after = _load_capture_bmp(after_path)
+    before = _load_capture_bmp(before_path)
     if params_path is not None:
         with open(params_path) as f:
             params = json.load(f)
@@ -440,9 +447,9 @@ def main():
     ap = argparse.ArgumentParser(
         description="Benchmark one light-sheet camera capture."
     )
-    ap.add_argument("--after", default="data/testfile_sheet_after.npy")
-    ap.add_argument("--before", default="data/testfile_sheet_before.npy")
-    ap.add_argument("--params", default="scripts/sheet/testfile_sheet_params.json")
+    ap.add_argument("--after", default="data/sheet/testfile_sheet_after.bmp")
+    ap.add_argument("--before", default="data/sheet/testfile_sheet_before.bmp")
+    ap.add_argument("--params", default="payload/sheet/testfile_sheet_params.json")
     ap.add_argument("--out", default="scripts/sheet/analysis_sheet_result.json")
     ap.add_argument("--preview", default="scripts/sheet/analysis_sheet_preview.png")
     args = ap.parse_args()

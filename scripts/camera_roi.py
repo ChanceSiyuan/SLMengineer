@@ -7,6 +7,12 @@ any pixel-scale mapping.
 from __future__ import annotations
 
 import numpy as np
+from PIL import Image
+
+
+def _load_capture_bmp(path) -> np.ndarray:
+    """Load an 8-bit grayscale BMP capture into a float64 array."""
+    return np.asarray(Image.open(path).convert("L"), dtype=np.float64)
 
 
 def find_target_center(
@@ -142,8 +148,8 @@ def analyze_camera_capture(
 
     Returns dict with center, disc_radius, and all metrics.
     """
-    after = np.load(after_path).astype(np.float64)
-    before = np.load(before_path).astype(np.float64)
+    after = _load_capture_bmp(after_path)
+    before = _load_capture_bmp(before_path)
     signal = after - before
 
     cy, cx, zo_cy, zo_cx = find_target_center(after, before)

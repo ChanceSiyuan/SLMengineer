@@ -2,7 +2,7 @@
 
 This module is imported by ``sweep_one.py`` (per-index generator) and
 reused by ``analyze_sweep_sheet.py``.  It contains no CLI entry point;
-use ``sweep_one.py --index N`` + ``run_one.sh N`` to drive sweeps.
+use ``sweep_one.py --index N`` then ``./push_run.sh payload/sheet/<N>_payload.npz`` to drive sweeps.
 
 Exports:
 - constants: ``OUT_DIR``, ``DEFAULT_CONFIG``, ``TIER1_PARAMS``, ``SLM_REINIT_PARAMS``
@@ -35,7 +35,7 @@ from slm.targets import measure_region as _measure_region, mask_from_target
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-OUT_DIR = "scripts/sweep_sheet"
+OUT_DIR = "payload/sheet"
 DEFAULT_CONFIG = "scripts/sheet/sweep_sheet_config.json"
 
 # Tier 1 params only affect post-CGM processing (Fresnel / LUT / camera).
