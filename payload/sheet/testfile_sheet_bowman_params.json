@@ -1,6 +1,6 @@
 {
-  "algorithm": "CGM",
-  "payload": "payload/sheet/testfile_sheet_payload.npz",
+  "algorithm": "CGM+BowmanInit",
+  "payload": "payload/sheet/testfile_sheet_bowman_payload.npz",
   "compute_grid": [
     1024,
     1024
@@ -13,11 +13,11 @@
   "focal_pitch_y_um_per_px": 15.8281,
   "runner_defaults": {
     "etime_us": 3500,
-    "n_avg": 20,
+    "n_avg": 10,
     "monitor": 1
   },
   "fresnel_applied_on_linux": true,
-  "fresnel_shift_distance_um": 800,
+  "fresnel_shift_distance_um": 1000,
   "fresnel_center_xy_px": [
     636,
     512
@@ -30,21 +30,23 @@
     0
   ],
   "target": "light_sheet",
-  "sheet_flat_width_px": 9,
-  "sheet_flat_width_um_focal": 142.45,
-  "sheet_gaussian_sigma_px": 1,
+  "sheet_flat_width_px": 10,
+  "sheet_flat_width_um_focal": 158.28,
+  "sheet_gaussian_sigma_px": 1.5,
   "sheet_angle_rad": 0,
   "sheet_edge_sigma_px": 0,
   "cgm_max_iterations": 4000,
   "cgm_steepness": 9,
-  "cgm_eta_steepness": 7,
+  "cgm_eta_steepness": 9,
   "cgm_setting_eta": 0.1,
-  "init_phase_method": "stationary_phase_2d",
-  "cgm_wall_time_s": 18.003,
-  "cgm_per_iter_ms": 4.5,
+  "init_phase_method": "bowman_quadratic_linear",
+  "bowman_R_rad_px2": 0.0024228719255844286,
+  "bowman_D_rad_px": -0.17355011477181118,
+  "bowman_theta_rad": 0.7853981633974483,
+  "cgm_wall_time_s": 9.205,
+  "cgm_per_iter_ms": 2.3,
   "cgm_device": "cuda",
-  "final_fidelity": 0.999988,
-  "final_one_minus_fidelity": 1.187e-05,
-  "final_efficiency": 0.149139,
-  "timestamp_local": "2026-04-19T15:56:02"
+  "final_fidelity": 0.999993,
+  "final_efficiency": 0.1,
+  "timestamp_local": "2026-04-19T12:36:44"
 }

@@ -45,39 +45,42 @@ PREVIEW_PATH = f"{OUTPUT_DIR}/testfile_sheet_preview.pdf"
 # SLM compute-grid geometric center).  Used to model off-center
 # illumination in CGM so the optimized phase matches the real input
 # amplitude.  Fill in from calibration; (0, 0) == legacy behavior.
-BEAM_CENTER_DX_UM = 0
-BEAM_CENTER_DY_UM = 0
+BEAM_CENTER_DX_UM = int(os.environ.get("SLM_BCM_DX_UM", 0))   # closed-loop overridable
+BEAM_CENTER_DY_UM = int(os.environ.get("SLM_BCM_DY_UM", 0))      # closed-loop overridable
 
 
 def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     # --- Capture parameters (used later by the Windows runner) ---
-    etime_us = 100        # 4 ms exposure
-    n_avg = 10             # average 10 frames
+    etime_us = 3500        # 4 ms exposure
+    n_avg = 20             # average 10 frames
     LUT = 207
-    fresnel_sd =  1000    # um -- compensates camera-focal-plane offset
+    fresnel_sd = 800    # um -- compensates camera-focal-plane offset
 
     # --- Light-sheet target parameters (1024^2 grid, focal pitch 15.83 um/px) ---
-    sheet_flat_width = 9    # px of uniform flat-top along line (~696 um)
-    sheet_gaussian_sigma = 2 # px perpendicular Gaussian 1-sigma (~40 um)
-    sheet_angle = 0           # horizontal
-    sheet_edge_sigma = 0   # px soft Gaussian taper at ends of the flat region
+    # Issue #20 final config: wide flat-top, soft edges, cylindrical lens OFF
+    # (passed as gaussian_sigma=None to the seed below), 5-iter CGM polish.
+    # See docs/sweep_sheet/FIX_LOG.md for the full derivation.
+    sheet_flat_width = 9    # px (~ 15.828 μm/px)
+    sheet_gaussian_sigma = 1 # px perpendicular (target shape; seed uses None)
+    sheet_angle = 0
+    sheet_edge_sigma = 0     # soft taper — discourages CGM spot-chain minimum
     # Shift the target ~30 focal pixels diagonally away from the zero-order
     # (undiffracted beam at grid center).  This replicates the function of
     # the old D=-pi/12, theta=pi/4 Bowman tilt but as an explicit target
     # shift so both the target and the seed are self-consistent.
-    target_shift_fpx = 30
+    target_shift_fpx = 20
 
     # --- CGM parameters ---
+    # 5-iter polish of the seed at high eta floor keeps the line continuous.
+    # cgm_max_iter >=30 collapses the line back into a CGM spot chain; see
+    # docs/sweep_sheet/FIX_LOG.md phase-2 sweep.  Env vars let closed-loop
+    # driver (scripts/sheet/closed_loop_sheet.py) perturb without editing.
     cgm_steepness = 9
-    # 0 = use stationary-phase seed directly (best for light-sheet: correct
-    # intensity shape, ~99.9% efficiency).  Set >0 to run CGM iterations for
-    # polishing (but CGM tends to concentrate energy into round spots -- see
-    # issue #18).
-    cgm_max_iterations = 4000
-    setting_eta = 0.2
-    cgm_eta_steepness = 9
+    cgm_max_iterations = int(os.environ.get("SLM_CGM_MAX_ITER", 4000))
+    setting_eta        = float(os.environ.get("SLM_SETTING_ETA", 0.1))
+    cgm_eta_steepness  = int(os.environ.get("SLM_CGM_ETA_STEEPNESS", 7))
     # --- 1. SLM_class setup (reads hamamatsu_test_config.json) ---
     # Override arraySizeBit from default [12,12] (=4096^2) to [10,10] (=1024^2) so the
     # CGM compute grid matches the SLM native short dimension (1024 rows).  This avoids
@@ -129,23 +132,17 @@ def main():
     # the first-order pattern away from the zero-order.
     init_phi = SLM.stationary_phase_sheet(
         flat_width=sheet_flat_width,
-        gaussian_sigma=sheet_gaussian_sigma,
+        gaussian_sigma=None,  # ← issue #20 fix: omit cylindrical-lens term
         angle=sheet_angle,
         center=target_center,
     )
 
-    # --- 4. Use stationary-phase seed directly (no CGM) ---
-    # The seed alone gives the correct INTENSITY distribution via geometric-
-    # optics ray redistribution (flatness ~0.64, eta ~99.9%, contrast 10^6).
-    # CGM is counterproductive here: it concentrates energy into a small
-    # bright spot (F=0.999 but eta=2.83%) which appears as a round blob on
-    # camera instead of the 44-pixel-wide flat-top.  The camera only sees
-    # |E|^2 (intensity), not the output phase, so the seed's rapidly-varying
-    # output phase is irrelevant.
-    #
-    # Optional: run a few CGM iterations (e.g., 10-50) to polish edge ringing
-    # without destroying the spatial extent.  Set cgm_max_iterations=0 to
-    # skip entirely.
+    # --- 4. Seed + bounded CGM polish ---
+    # Empirically (issue #20 phase-3): 5 iterations of CGM polish on top of
+    # the corrected seed gives a clean continuous light sheet (continuity
+    # 0.97, aspect 4.3 on camera).  Running CGM to convergence always pulls
+    # the output into a 2-4 bright spot chain — the ''better'' minimum for
+    # peak-correlation fidelity but not what a microscopy user wants.
     t0 = time.perf_counter()
     if cgm_max_iterations > 0:
         cgm_device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -234,6 +231,7 @@ def main():
         "cgm_max_iterations": cgm_max_iterations,
         "cgm_steepness": cgm_steepness,
         "cgm_eta_steepness": cgm_eta_steepness,
+        "cgm_setting_eta": setting_eta,
         "init_phase_method": "stationary_phase_2d",
         "cgm_wall_time_s": round(cgm_wall_time, 3),
         "cgm_per_iter_ms": round(per_iter_ms, 2),

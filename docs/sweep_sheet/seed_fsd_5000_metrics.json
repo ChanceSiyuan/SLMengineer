@@ -1,0 +1,91 @@
+{
+  "after_path": "data/sheet/testfile_sheet_after.png",
+  "before_path": "data/sheet/testfile_sheet_before.png",
+  "params_path": "payload/sheet/testfile_sheet_params.json",
+  "roi": {
+    "cy": 1392,
+    "cx": 1738,
+    "dx": 139,
+    "dy": 64,
+    "bbox": [
+      1328,
+      1456,
+      1599,
+      1877
+    ],
+    "warning": null
+  },
+  "fit": {
+    "major_is_y": false,
+    "major_length": 278,
+    "minor_length": 128,
+    "measured_flat_width_px": 67.95753861999897,
+    "measured_edge_sigma_px": 29.59150505419467,
+    "major_fit_amp": 14146.1373623056,
+    "major_fit_center": 93.07712094281213,
+    "major_fit_baseline": 359.3136999051091,
+    "measured_gauss_sigma_px": 21.11518931708742,
+    "minor_fit_amp": 38278.39200145327,
+    "minor_fit_center": 82.96338211080473,
+    "minor_fit_baseline": 756.8457142095333
+  },
+  "metrics": {
+    "fidelity_corr": 0.062469879239179564,
+    "fidelity_overlap": 0.006094822004199761,
+    "efficiency": 0.47268504722249144,
+    "total_intensity": 2087432.0,
+    "peak_intensity": 236.0,
+    "flat_region_rms": 0.02920585845345371
+  },
+  "input_params": {
+    "algorithm": "CGM",
+    "payload": "payload/sheet/testfile_sheet_payload.npz",
+    "compute_grid": [
+      1024,
+      1024
+    ],
+    "slm_native": [
+      1024,
+      1272
+    ],
+    "focal_pitch_x_um_per_px": 15.8281,
+    "focal_pitch_y_um_per_px": 15.8281,
+    "runner_defaults": {
+      "etime_us": 100,
+      "n_avg": 10,
+      "monitor": 1
+    },
+    "fresnel_applied_on_linux": true,
+    "fresnel_shift_distance_um": 5000,
+    "fresnel_center_xy_px": [
+      636,
+      512
+    ],
+    "calibration_applied_on_linux": true,
+    "calibration_bmp": "calibration/CAL_LSH0905549_1013nm.bmp",
+    "LUT": 207,
+    "beam_center_um": [
+      0,
+      0
+    ],
+    "target": "light_sheet",
+    "sheet_flat_width_px": 9,
+    "sheet_flat_width_um_focal": 142.45,
+    "sheet_gaussian_sigma_px": 2,
+    "sheet_angle_rad": 0,
+    "sheet_edge_sigma_px": 0,
+    "cgm_max_iterations": 0,
+    "cgm_steepness": 9,
+    "cgm_eta_steepness": 9,
+    "cgm_setting_eta": 0.2,
+    "init_phase_method": "stationary_phase_2d",
+    "cgm_wall_time_s": 0.0,
+    "cgm_per_iter_ms": 0.01,
+    "cgm_device": "seed_only",
+    "final_fidelity": 0.097293,
+    "final_one_minus_fidelity": 0.9027,
+    "final_efficiency": 0.999811,
+    "timestamp_local": "2026-04-17T10:54:03"
+  },
+  "preview_path": "docs/sweep_sheet/seed_fsd_5000_preview.png"
+}

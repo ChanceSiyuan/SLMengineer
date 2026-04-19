@@ -47,7 +47,10 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from camera_roi import find_target_center  # noqa: E402
+try:
+    from camera_roi import find_target_center  # noqa: E402
+except ImportError:
+    find_target_center = None  # fallback path below guards on None
 from slm.targets import light_sheet  # noqa: E402
 
 
@@ -84,21 +87,28 @@ def _walk_until_drop(
 
 def detect_roi(
     before: np.ndarray, after: np.ndarray, max_walk: int = 400,
+    peak: str = "before",
 ) -> dict[str, Any]:
-    """Issue #17 literal ROI detection: start at the brightest point of
-    *before* (zero-order since the SLM is blank), then walk outward in
-    +/-x and +/-y through *after* until intensity drops.
+    """ROI detection: pick a starting peak, then walk outward in +/-x/y
+    through *after* until intensity drops.
 
-    Walking through *after* (not after-before) matters because on this
-    rig the light-sheet overlaps the saturated zero-order — in the
-    subtracted signal the center value is ~0, which collapses the walk.
-    Using *after* lets the walk follow the bright chain outward.
+    peak="before" (default, legacy): start at the brightest point of
+    *before* (= zero-order, since SLM is blank).  Correct when the
+    target overlaps the zero-order.
 
-    Returns a dict with c=(cy,cx), dx, dy, roi_slice, and a warning
-    string if anything degenerate happened.
+    peak="signal": start at the brightest point of median(after-before).
+    Correct when the target is shifted away from the zero-order (issue
+    #19 sweep uses target_shift_fpx=30 → sheet is ~475 um off-center).
     """
-    before_s = median_filter(before.astype(np.float64), size=3)
-    cy, cx = np.unravel_index(int(np.argmax(before_s)), before_s.shape)
+    if peak == "signal":
+        sig_s = median_filter(
+            np.clip(after.astype(np.float64) - before.astype(np.float64), 0.0, None),
+            size=3,
+        )
+        cy, cx = np.unravel_index(int(np.argmax(sig_s)), sig_s.shape)
+    else:
+        before_s = median_filter(before.astype(np.float64), size=3)
+        cy, cx = np.unravel_index(int(np.argmax(before_s)), before_s.shape)
 
     after_f = after.astype(np.float64)
     H, W = after_f.shape
@@ -133,8 +143,11 @@ def detect_roi(
             "walk from _before peak through _after stayed below "
             f"background (dx={dx}, dy={dy}); falling back to after-before cluster"
         )
-        cy_fb, cx_fb, _, _ = find_target_center(after, before)
-        cy, cx = cy_fb, cx_fb
+        if find_target_center is None:
+            warning += " | camera_roi unavailable; using initial (cy,cx)"
+        else:
+            cy_fb, cx_fb, _, _ = find_target_center(after, before)
+            cy, cx = cy_fb, cx_fb
         row = after_sub[cy, :]
         col = after_sub[:, cx]
         max_x_plus = min(max_walk, W - 1 - cx)
@@ -313,6 +326,7 @@ def analyze_capture(
     before_path: str | Path,
     params_path: str | Path | None = None,
     preview_path: str | Path | None = None,
+    peak: str = "before",
 ) -> dict[str, Any]:
     """Full analysis pipeline. Returns a result dict suitable for JSON."""
     after = _load_capture_bmp(after_path)
@@ -323,7 +337,7 @@ def analyze_capture(
     else:
         params = {}
 
-    roi_info = detect_roi(before, after)
+    roi_info = detect_roi(before, after, peak=peak)
     y0, y1, x0, x1 = roi_info["bbox"]
     signal = after - before
     roi = np.clip(signal[y0:y1, x0:x1], 0.0, None)
@@ -452,6 +466,9 @@ def main():
     ap.add_argument("--params", default="payload/sheet/testfile_sheet_params.json")
     ap.add_argument("--out", default="scripts/sheet/analysis_sheet_result.json")
     ap.add_argument("--preview", default="scripts/sheet/analysis_sheet_preview.png")
+    ap.add_argument("--peak", choices=["before", "signal"], default="before",
+                    help="ROI start: 'before' (zero-order, target overlaps) or "
+                         "'signal' (after-before peak, target shifted away).")
     args = ap.parse_args()
 
     for p in (args.after, args.before):
@@ -464,7 +481,7 @@ def main():
         warnings.warn(f"{args.params} not found; skipping shape fidelity")
 
     result = analyze_capture(
-        args.after, args.before, params_path, args.preview,
+        args.after, args.before, params_path, args.preview, peak=args.peak,
     )
 
     with open(args.out, "w", encoding="utf-8") as f:

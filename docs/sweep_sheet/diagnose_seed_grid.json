@@ -1,0 +1,60 @@
+{
+  "note": "Pure Linux-side simulation of stationary_phase_sheet seed. No fresnel_sd applied, no LUT, no camera. Tests issue #20 hypotheses 1 and 2.",
+  "physical_target": {
+    "flat_width_um": 142.4529,
+    "gauss_sigma_um": 31.6562,
+    "shift_um": 474.84299999999996
+  },
+  "cases": {
+    "N_1024": {
+      "N": 1024,
+      "focal_pitch_um_per_px": 15.828124999999998,
+      "flat_width_px": 8.999985784797632,
+      "flat_width_um": 142.4529,
+      "gauss_sigma_px": 1.9999968410661404,
+      "gauss_sigma_um": 31.6562,
+      "shift_px": 29.999952615992104,
+      "shift_um": 474.84299999999996,
+      "target_center_px": [
+        481.50004738400787,
+        481.50004738400787
+      ],
+      "eta_in_region": 0.9997856943044058,
+      "major_fwhm_px": 9.0,
+      "major_fwhm_um": 142.45312499999997,
+      "minor_fwhm_px": 3.0,
+      "minor_fwhm_um": 47.48437499999999,
+      "peak_flat": 0.03379147986172935,
+      "P_total": 1.0000000000000002,
+      "win_shape": [
+        96,
+        96
+      ]
+    },
+    "N_4096": {
+      "N": 4096,
+      "focal_pitch_um_per_px": 3.9570312499999996,
+      "flat_width_px": 35.99994313919053,
+      "flat_width_um": 142.4529,
+      "gauss_sigma_px": 7.999987364264562,
+      "gauss_sigma_um": 31.6562,
+      "shift_px": 119.99981046396842,
+      "shift_um": 474.84299999999996,
+      "target_center_px": [
+        1927.5001895360315,
+        1927.5001895360315
+      ],
+      "eta_in_region": 0.9989468299292438,
+      "major_fwhm_px": 35.0,
+      "major_fwhm_um": 138.49609374999997,
+      "minor_fwhm_px": 13.0,
+      "minor_fwhm_um": 51.44140624999999,
+      "peak_flat": 0.002025516546265342,
+      "P_total": 1.0000000000000004,
+      "win_shape": [
+        384,
+        384
+      ]
+    }
+  }
+}

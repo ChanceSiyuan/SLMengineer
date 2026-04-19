@@ -1,0 +1,91 @@
+{
+  "after_path": "data/sheet/testfile_sheet_after.png",
+  "before_path": "data/sheet/testfile_sheet_before.png",
+  "params_path": "payload/sheet/testfile_sheet_params.json",
+  "roi": {
+    "cy": 1404,
+    "cx": 1572,
+    "dx": 71,
+    "dy": 34,
+    "bbox": [
+      1370,
+      1438,
+      1501,
+      1643
+    ],
+    "warning": null
+  },
+  "fit": {
+    "major_is_y": false,
+    "major_length": 142,
+    "minor_length": 68,
+    "measured_flat_width_px": 28.84485676605287,
+    "measured_edge_sigma_px": 2.610265244790473,
+    "major_fit_amp": 2700.6860770038047,
+    "major_fit_center": 61.14057878983697,
+    "major_fit_baseline": 2413.7219602331156,
+    "measured_gauss_sigma_px": 13.03472518882626,
+    "minor_fit_amp": 9653.966311513104,
+    "minor_fit_center": 34.891323861540364,
+    "minor_fit_baseline": 1851.185969505162
+  },
+  "metrics": {
+    "fidelity_corr": 0.08266356820505628,
+    "fidelity_overlap": 0.01395717982264297,
+    "efficiency": 0.0903961676733646,
+    "total_intensity": 438318.0,
+    "peak_intensity": 235.0,
+    "flat_region_rms": 0.31764958133945265
+  },
+  "input_params": {
+    "algorithm": "CGM",
+    "payload": "payload/sheet/testfile_sheet_payload.npz",
+    "compute_grid": [
+      1024,
+      1024
+    ],
+    "slm_native": [
+      1024,
+      1272
+    ],
+    "focal_pitch_x_um_per_px": 15.8281,
+    "focal_pitch_y_um_per_px": 15.8281,
+    "runner_defaults": {
+      "etime_us": 100,
+      "n_avg": 10,
+      "monitor": 1
+    },
+    "fresnel_applied_on_linux": true,
+    "fresnel_shift_distance_um": 1000,
+    "fresnel_center_xy_px": [
+      636,
+      512
+    ],
+    "calibration_applied_on_linux": true,
+    "calibration_bmp": "calibration/CAL_LSH0905549_1013nm.bmp",
+    "LUT": 207,
+    "beam_center_um": [
+      0,
+      0
+    ],
+    "target": "light_sheet",
+    "sheet_flat_width_px": 9,
+    "sheet_flat_width_um_focal": 142.45,
+    "sheet_gaussian_sigma_px": 2,
+    "sheet_angle_rad": 0,
+    "sheet_edge_sigma_px": 0,
+    "cgm_max_iterations": 4000,
+    "cgm_steepness": 9,
+    "cgm_eta_steepness": 10,
+    "cgm_setting_eta": 0.2,
+    "init_phase_method": "stationary_phase_2d",
+    "cgm_wall_time_s": 4.998,
+    "cgm_per_iter_ms": 1.25,
+    "cgm_device": "cuda",
+    "final_fidelity": 0.892114,
+    "final_one_minus_fidelity": 0.1079,
+    "final_efficiency": 0.195536,
+    "timestamp_local": "2026-04-17T09:08:28"
+  },
+  "preview_path": "docs/sweep_sheet/etasteep_10_preview.png"
+}

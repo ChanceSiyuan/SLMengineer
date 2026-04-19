@@ -1,0 +1,91 @@
+{
+  "after_path": "data/sheet/testfile_sheet_after.png",
+  "before_path": "data/sheet/testfile_sheet_before.png",
+  "params_path": "payload/sheet/testfile_sheet_params.json",
+  "roi": {
+    "cy": 1392,
+    "cx": 1542,
+    "dx": 52,
+    "dy": 51,
+    "bbox": [
+      1341,
+      1443,
+      1490,
+      1594
+    ],
+    "warning": null
+  },
+  "fit": {
+    "major_is_y": false,
+    "major_length": 104,
+    "minor_length": 102,
+    "measured_flat_width_px": 1.9392617969840744,
+    "measured_edge_sigma_px": 6.917628239094032,
+    "major_fit_amp": 10274.604014047574,
+    "major_fit_center": 51.72726125532382,
+    "major_fit_baseline": 1759.4925005651462,
+    "measured_gauss_sigma_px": 16.871748304076917,
+    "minor_fit_amp": 8100.335406784137,
+    "minor_fit_center": 64.78882067379865,
+    "minor_fit_baseline": 427.23888940805347
+  },
+  "metrics": {
+    "fidelity_corr": 0.2796491418617664,
+    "fidelity_overlap": 0.05735087444826938,
+    "efficiency": 0.07815192366614479,
+    "total_intensity": 381073.0,
+    "peak_intensity": 235.0,
+    "flat_region_rms": 0.00407408962997186
+  },
+  "input_params": {
+    "algorithm": "CGM",
+    "payload": "payload/sheet/testfile_sheet_payload.npz",
+    "compute_grid": [
+      1024,
+      1024
+    ],
+    "slm_native": [
+      1024,
+      1272
+    ],
+    "focal_pitch_x_um_per_px": 15.8281,
+    "focal_pitch_y_um_per_px": 15.8281,
+    "runner_defaults": {
+      "etime_us": 100,
+      "n_avg": 10,
+      "monitor": 1
+    },
+    "fresnel_applied_on_linux": true,
+    "fresnel_shift_distance_um": 1000,
+    "fresnel_center_xy_px": [
+      636,
+      512
+    ],
+    "calibration_applied_on_linux": true,
+    "calibration_bmp": "calibration/CAL_LSH0905549_1013nm.bmp",
+    "LUT": 207,
+    "beam_center_um": [
+      0,
+      0
+    ],
+    "target": "light_sheet",
+    "sheet_flat_width_px": 15,
+    "sheet_flat_width_um_focal": 237.42,
+    "sheet_gaussian_sigma_px": 2,
+    "sheet_angle_rad": 0,
+    "sheet_edge_sigma_px": 0,
+    "cgm_max_iterations": 4000,
+    "cgm_steepness": 9,
+    "cgm_eta_steepness": 9,
+    "cgm_setting_eta": 0.2,
+    "init_phase_method": "stationary_phase_2d",
+    "cgm_wall_time_s": 4.924,
+    "cgm_per_iter_ms": 1.23,
+    "cgm_device": "cuda",
+    "final_fidelity": 0.898602,
+    "final_one_minus_fidelity": 0.1014,
+    "final_efficiency": 0.134918,
+    "timestamp_local": "2026-04-17T09:14:29"
+  },
+  "preview_path": "docs/sweep_sheet/flatw_15_preview.png"
+}

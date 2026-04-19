@@ -16,7 +16,9 @@
 #
 # Flags:
 #   --hold-on       Display payload on SLM and hold; no capture, no pull.
-#   --png           Convert BMP→PNG on Windows before pulling; pull PNG only.
+#   --png           Convert each BMP into a 2D-color heatmap PNG on Windows
+#                   (matplotlib "hot" cmap, auto-scaled, with colorbar); pull
+#                   the color PNGs only (BMPs stay on the Windows side).
 
 set -e
 
@@ -62,12 +64,14 @@ PORT="60022"
 USER="Galileo"
 WIN_RUNNER_FS="/C:/Users/Galileo/slm_runner"
 WIN_RUNNER_BS="C:\\Users\\Galileo\\slm_runner"
+WIN_RUNNER_WIN="C:/Users/Galileo/slm_runner"
 SSH_CMD="ssh -p ${PORT} ${USER}@${SERVER_IP}"
 SCP_CMD="scp -P ${PORT}"
 
 REMOTE_INCOMING_BS="${WIN_RUNNER_BS}\\incoming\\${SUBDIR_BS}"
 REMOTE_INCOMING_FS="${WIN_RUNNER_FS}/incoming/${SUBDIR}"
 REMOTE_DATA_FS="${WIN_RUNNER_FS}/data/${SUBDIR}"
+REMOTE_DATA_WIN="${WIN_RUNNER_WIN}/data/${SUBDIR}"
 LOCAL_DATA_DIR="data/${SUBDIR}"
 
 # runner.py uses prefix as a path under data/, so encode the subdir into the prefix.
@@ -97,29 +101,45 @@ if [ -n "${HOLD_FLAG}" ]; then
 fi
 
 if [ -n "${PNG_MODE}" ]; then
-    echo "[4/5] Converting BMP→PNG on Windows..."
-    ${SSH_CMD} "uv run python - <<PY
-from PIL import Image
+    echo "[4/5] Rendering BMP→color-heatmap PNG on Windows..."
+    ${SSH_CMD} "cd /d C:\\Users\\Galileo\\SLMengineer && uv run python - \"${REMOTE_DATA_WIN}\" \"${BASE}\"" <<'PY'
 import os
 import sys
+import numpy as np
+from PIL import Image
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
-data = r\"${REMOTE_DATA_FS}\"
+data, base = sys.argv[1], sys.argv[2]
 ok = True
-for tag in (\"before\", \"after\"):
-    bmp = os.path.join(data, \"${BASE}_\" + tag + \".bmp\")
-    png = os.path.join(data, \"${BASE}_\" + tag + \".png\")
+for tag in ("before", "after"):
+    bmp = os.path.join(data, f"{base}_{tag}.bmp")
+    png = os.path.join(data, f"{base}_{tag}.png")
     if not os.path.exists(bmp):
-        print(f\"  {tag}: bmp not found ({bmp})\", file=sys.stderr)
+        print(f"  {tag}: bmp not found ({bmp})", file=sys.stderr)
         ok = False
         continue
-    Image.open(bmp).save(png)
+    arr = np.asarray(Image.open(bmp).convert("L"), dtype=np.uint8)
+    vmax = max(int(arr.max()), 1)
+    fig, ax = plt.subplots(figsize=(10, 8))
+    im = ax.imshow(arr, cmap="hot", vmin=0, vmax=vmax)
+    ax.set_title(
+        f"{base}_{tag}  shape={arr.shape}  "
+        f"min={int(arr.min())}  max={int(arr.max())}  "
+        f"mean={arr.mean():.1f}"
+    )
+    ax.set_xticks([]); ax.set_yticks([])
+    plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    fig.savefig(png, dpi=150, bbox_inches="tight")
+    plt.close(fig)
     print(
-        f\"  {tag}: {os.path.getsize(bmp)//1024}KB bmp -> \"
-        f\"{os.path.getsize(png)//1024}KB png\"
+        f"  {tag}: {os.path.getsize(bmp)//1024}KB bmp -> "
+        f"{os.path.getsize(png)//1024}KB color png (hot cmap, vmax={vmax})"
     )
 
 sys.exit(0 if ok else 2)
-PY"
+PY
 
     echo "[5/5] Pulling PNG frames + run.json into ${LOCAL_DATA_DIR}/ ..."
     mkdir -p "${LOCAL_DATA_DIR}"
