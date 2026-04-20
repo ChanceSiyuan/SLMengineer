@@ -1,0 +1,130 @@
+[
+  {
+    "var": "fresnel_sd",
+    "value": "400",
+    "rms_percent": 25.00317676539759,
+    "pk_pk_percent": 110.32582654528031,
+    "flat_top_bounds_px": [
+      16,
+      106
+    ],
+    "flat_top_mean_intensity": 92.75555555555556,
+    "roi_shape_yx": [
+      40,
+      106
+    ],
+    "plot_path": "docs/sweep_sheet/param_sweep/fresnel_sd_400_plot.png"
+  },
+  {
+    "var": "fresnel_sd",
+    "value": "600",
+    "rms_percent": 24.746992590988572,
+    "pk_pk_percent": 110.9232622938474,
+    "flat_top_bounds_px": [
+      17,
+      106
+    ],
+    "flat_top_mean_intensity": 99.4681647940075,
+    "roi_shape_yx": [
+      40,
+      106
+    ],
+    "plot_path": "docs/sweep_sheet/param_sweep/fresnel_sd_600_plot.png"
+  },
+  {
+    "var": "fresnel_sd",
+    "value": "1000",
+    "rms_percent": 26.404983560959735,
+    "pk_pk_percent": 117.09820919356676,
+    "flat_top_bounds_px": [
+      20,
+      107
+    ],
+    "flat_top_mean_intensity": 100.77011494252874,
+    "roi_shape_yx": [
+      42,
+      107
+    ],
+    "plot_path": "docs/sweep_sheet/param_sweep/fresnel_sd_1000_plot.png"
+  },
+  {
+    "var": "fresnel_sd",
+    "value": "1200",
+    "rms_percent": 10.789203810624757,
+    "pk_pk_percent": 37.083254850254285,
+    "flat_top_bounds_px": [
+      22,
+      85
+    ],
+    "flat_top_mean_intensity": 112.35978835978837,
+    "roi_shape_yx": [
+      42,
+      106
+    ],
+    "plot_path": "docs/sweep_sheet/param_sweep/fresnel_sd_1200_plot.png"
+  },
+  {
+    "var": "fresnel_sd",
+    "value": "1400",
+    "rms_percent": 24.758761611859143,
+    "pk_pk_percent": 112.71277982642383,
+    "flat_top_bounds_px": [
+      18,
+      103
+    ],
+    "flat_top_mean_intensity": 105.28235294117646,
+    "roi_shape_yx": [
+      42,
+      103
+    ],
+    "plot_path": "docs/sweep_sheet/param_sweep/fresnel_sd_1400_plot.png"
+  },
+  {
+    "var": "fresnel_sd",
+    "value": "1600",
+    "rms_percent": 25.245497136141257,
+    "pk_pk_percent": 113.99777752232059,
+    "flat_top_bounds_px": [
+      18,
+      103
+    ],
+    "flat_top_mean_intensity": 102.34117647058824,
+    "roi_shape_yx": [
+      42,
+      103
+    ],
+    "plot_path": "docs/sweep_sheet/param_sweep/fresnel_sd_1600_plot.png"
+  },
+  {
+    "var": "fresnel_sd",
+    "value": "1800",
+    "rms_percent": 25.697750928460476,
+    "pk_pk_percent": 116.1478136882129,
+    "flat_top_bounds_px": [
+      17,
+      102
+    ],
+    "flat_top_mean_intensity": 99.01176470588236,
+    "roi_shape_yx": [
+      42,
+      102
+    ],
+    "plot_path": "docs/sweep_sheet/param_sweep/fresnel_sd_1800_plot.png"
+  },
+  {
+    "var": "fresnel_sd",
+    "value": "2000",
+    "rms_percent": 24.29547791702019,
+    "pk_pk_percent": 111.89113569884269,
+    "flat_top_bounds_px": [
+      17,
+      100
+    ],
+    "flat_top_mean_intensity": 94.73493975903614,
+    "roi_shape_yx": [
+      43,
+      100
+    ],
+    "plot_path": "docs/sweep_sheet/param_sweep/fresnel_sd_2000_plot.png"
+  }
+]

@@ -5,8 +5,19 @@ import json
 import numpy as np
 import pytest
 
-from slm.beams import initial_slm_field
 from slm.targets import mask_from_target, rectangular_grid, top_hat
+
+
+def _gaussian_field(shape, sigma, rng):
+    """Gaussian amplitude × random phase, normalized to unit power."""
+    ny, nx = shape
+    y = np.arange(ny) - (ny - 1) / 2.0
+    x = np.arange(nx) - (nx - 1) / 2.0
+    yy, xx = np.meshgrid(y, x, indexing="ij")
+    amp = np.exp(-(xx**2 + yy**2) / (2.0 * sigma**2))
+    phase = rng.uniform(-np.pi, np.pi, size=shape)
+    field = amp * np.exp(1j * phase)
+    return field / np.sqrt(np.sum(np.abs(field) ** 2))
 
 
 @pytest.fixture
@@ -26,12 +37,12 @@ def rng():
 
 @pytest.fixture
 def gaussian_field_64(small_grid, rng):
-    return initial_slm_field(small_grid, sigma=10.0, rng=rng)
+    return _gaussian_field(small_grid, sigma=10.0, rng=rng)
 
 
 @pytest.fixture
 def gaussian_field_128(medium_grid, rng):
-    return initial_slm_field(medium_grid, sigma=20.0, rng=rng)
+    return _gaussian_field(medium_grid, sigma=20.0, rng=rng)
 
 
 @pytest.fixture

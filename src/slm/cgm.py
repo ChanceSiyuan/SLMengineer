@@ -8,10 +8,10 @@ work at a minimum.
 Public entry points
 -------------------
 
-- :func:`cgm` — numpy-in/numpy-out API (used by ``slm.hybrid``,
-  ``slm.feedback``, and ``tests/test_cgm.py``).
+- :func:`cgm` — numpy-in/numpy-out API (kept for future use).
 - :func:`CGM_phase_generate` — torch-in/torch-out API mirroring
-  ``slm.wgs.WGS_phase_generate`` (used by the hardware scripts).
+  ``slm.wgs.WGS_phase_generate`` (used by the hardware scripts under
+  ``scripts/``).
 - :func:`tophat_phase_generate` — convenience wrapper for top-hat targets.
 - :class:`CGMConfig`, :class:`CGMResult` — dataclasses.
 
@@ -572,9 +572,8 @@ def cgm(
 
     Torch-first implementation: the optimisation loop runs on
     ``torch.complex64`` tensors on the best available device (CUDA when
-    present, else CPU).  Input/output remain numpy arrays for backward
-    compatibility with ``slm.hybrid``, ``slm.feedback``, and the
-    finite-difference tests in ``tests/test_cgm.py``.
+    present, else CPU).  Input/output remain numpy arrays for callers
+    that prefer the numpy-native API.
 
     Parameters
     ----------

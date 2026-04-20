@@ -1,26 +1,18 @@
-"""Closed-loop camera feedback for the light-sheet payload (issue #20).
-
-Drives the asymmetry of the on-camera light sheet toward zero by adjusting
-``BEAM_CENTER_DX_UM`` between hardware iterations, with a strict shape-
-regression guardrail so the loop cannot trade away the line shape to
-reduce asymmetry (a small symmetric blob also has zero asymmetry).
+"""Camera-feedback closed-loop light-sheet uniformity optimizer.
 
 Each iteration:
 
-  1. Run ``scripts/sheet/testfile_sheet.py`` with the current
-     ``SLM_BCM_DX_UM`` env override.
-  2. ``./push_run.sh ... --png`` pushes the payload, runs the SLM, captures
-     before/after PNGs from the Vimba camera.
-  3. ``scripts/sheet/analysis_sheet.py`` extracts the signal ROI + fid_corr.
-  4. Compute (a) left/right brightness asymmetry over the cropped ROI,
-     (b) shape_score = aspect_ratio * fid_corr.
-  5. Decide next step:
-       * if |asym| ≤ ASYM_TOL → done
-       * if shape_score < SHAPE_FLOOR * best_shape_score → revert to best
-         and shrink the step
-       * else: damped gradient on |asym|; halve step on sign flip
+ 1. Build the phase from the current *weighted* target via CGM.  After
+    iter 0 CGM warm-starts from the previous iteration's wrapped phase
+    so the polish is incremental.
+ 2. Compose Fresnel + calibration → push payload → capture ``after.bmp``.
+ 3. Call ``analysis_sheet.analyze`` in-process to extract the flat-top
+    1D profile and RMS / Pk-Pk.
+ 4. Map the measured flat-top onto the target's ``flat_width`` columns,
+    compute correction weights ``w[i] = sqrt(mean / measured[i])``, and
+    multiply the target's along-axis amplitude by a damped version.
 
-Stops when |asym| ≤ ASYM_TOL or step shrinks below MIN_STEP or MAX_ITER hit.
+Stops when flat-top RMS% ≤ ``RMS_TOL`` or after ``MAX_ITER``.
 
 Run::
 
@@ -32,171 +24,291 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import time
+from pathlib import Path
 
 import numpy as np
-from PIL import Image
+import torch
+
+from slm.cgm import CGM_phase_generate
+from slm.generation import SLM_class
+from slm import imgpy
+from slm.metrics import fidelity as _fidelity, efficiency as _efficiency
+from slm.propagation import fft_propagate
+from slm.targets import measure_region
+
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+# Scripts/ is not a package — ensure imports from sibling files work.
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+from analysis_sheet import analyze as analyze_after_bmp  # noqa: E402
 
 
-REPO = "/home/chance/SLMengineer"
-TESTFILE = "scripts/sheet/testfile_sheet.py"
-PAYLOAD = "payload/sheet/testfile_sheet_payload.npz"
-AFTER_PNG = "data/sheet/testfile_sheet_after.png"
-BEFORE_PNG = "data/sheet/testfile_sheet_before.png"
-PARAMS_JSON = "payload/sheet/testfile_sheet_params.json"
-ARCHIVE_DIR = "docs/sweep_sheet"
+REPO = Path(__file__).resolve().parents[2]
+PAYLOAD_DIR = REPO / "payload" / "sheet"
+PAYLOAD_PATH = PAYLOAD_DIR / "testfile_sheet_payload.npz"
+PARAMS_PATH = PAYLOAD_DIR / "testfile_sheet_params.json"
+AFTER_BMP = REPO / "data" / "sheet" / "testfile_sheet_after.bmp"
+HISTORY_DIR = REPO / "docs" / "sweep_sheet" / "closed_loop"
+BEST_PLOT = HISTORY_DIR / "best_plot.png"
+BEST_JSON = HISTORY_DIR / "best_result.json"
 
-MAX_ITER = 6
-ASYM_TOL = 0.05
-INITIAL_BCM = -2000           # phase-2 manual winner
-INITIAL_STEP = 500            # μm — small to stay near the known good point
-MIN_STEP = 100                # μm
-SHAPE_FLOOR = 0.6             # if shape_score < SHAPE_FLOOR * best, revert
+# Physics / CGM config — kept in sync with scripts/sheet/testfile_sheet.py.
+FRESNEL_SD_UM          = int(os.environ.get("SLM_FRESNEL_SD", 1200))
+LUT                    = 207
+CAL_BMP                = "calibration/CAL_LSH0905549_1013nm.bmp"
+ETIME_US               = int(os.environ.get("SLM_ETIME_US", 1500))
+N_AVG                  = int(os.environ.get("SLM_N_AVG", 20))
+SHEET_FLAT_WIDTH       = int(os.environ.get("SLM_FLAT_WIDTH", 9))
+SHEET_GAUSSIAN_SIGMA   = float(os.environ.get("SLM_GAUSS_SIGMA", 1))
+SHEET_EDGE_SIGMA       = float(os.environ.get("SLM_EDGE_SIGMA", 0))
+SHEET_ANGLE_RAD        = 0.0
+TARGET_SHIFT_FPX       = int(os.environ.get("SLM_TARGET_SHIFT_FPX", 20))
+CGM_STEEPNESS          = int(os.environ.get("SLM_CGM_STEEPNESS", 9))
+CGM_MAX_ITER           = int(os.environ.get("SLM_CGM_MAX_ITER", 4000))
+CGM_SETTING_ETA        = float(os.environ.get("SLM_SETTING_ETA", 0.1))
+CGM_ETA_STEEPNESS      = int(os.environ.get("SLM_CGM_ETA_STEEPNESS", 7))
+
+# Closed-loop knobs
+MAX_ITER       = int(os.environ.get("CL_MAX_ITER", 5))
+RMS_TOL        = float(os.environ.get("CL_RMS_TOL", 2.0))
+WEIGHT_CLIP    = (0.5, 2.0)
+DAMPING        = float(os.environ.get("CL_DAMPING", 0.5))
+# After iter 0, CGM warm-starts from the last wrapped phase so polish is
+# incremental; reuse a smaller iteration budget to save hardware time.
+CGM_WARM_ITER  = int(os.environ.get("CL_CGM_WARM_ITER", CGM_MAX_ITER // 2))
 
 
-def run_iteration(bcm_dx_um: int, tag: str) -> dict:
-    env = {**os.environ, "SLM_BCM_DX_UM": str(int(bcm_dx_um))}
-    print(f"\n=== iter {tag}: BCM_DX={bcm_dx_um} μm ===")
-    t0 = time.perf_counter()
-    subprocess.run(
-        ["uv", "run", "python", TESTFILE], cwd=REPO, env=env, check=True,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+def apply_weights(target_base: np.ndarray, flat_cols: np.ndarray,
+                  weights: np.ndarray) -> np.ndarray:
+    """Multiply each flat-top column by its per-column weight, then
+    renormalize to unit power."""
+    out = target_base.copy()
+    for col_idx, w in zip(flat_cols, weights):
+        out[:, col_idx] *= w
+    power = float(np.sum(np.abs(out) ** 2))
+    if power > 0:
+        out /= np.sqrt(power)
+    return out
+
+
+def build_slm_screen(SLM: SLM_class, target_amp: np.ndarray,
+                     init_phi: np.ndarray, n_iter: int
+                     ) -> tuple[np.ndarray, np.ndarray, float, float]:
+    """Run CGM, fold in Fresnel + calibration; return (uint8 SLM screen,
+    wrapped phase for warm-starting the next iter, sim fidelity, sim
+    efficiency)."""
+    SLM_Phase = CGM_phase_generate(
+        torch.tensor(SLM.initGaussianAmp),
+        torch.from_numpy(init_phi),
+        torch.from_numpy(target_amp),
+        max_iterations=n_iter,
+        steepness=CGM_STEEPNESS,
+        eta_min=CGM_SETTING_ETA,
+        eta_steepness=CGM_ETA_STEEPNESS,
+        Plot=False,
     )
-    print(f"  payload built in {time.perf_counter() - t0:.1f}s; pushing...")
-    t0 = time.perf_counter()
-    subprocess.run(
-        ["./push_run.sh", PAYLOAD, "--png"], cwd=REPO, check=True,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    phase_wrapped = np.angle(np.exp(1j * SLM_Phase.cpu().clone().numpy()))
+    screen_raw = SLM.phase_to_screen(phase_wrapped)
+
+    W, H = SLM.SLMRes
+    cx, cy = W // 2, H // 2
+    fresnel = SLM.fresnel_lens_phase_generate(FRESNEL_SD_UM, cx, cy)[0]
+    screen_shift = (
+        (screen_raw.astype(np.int32) + fresnel.astype(np.int32)) % 256
+    ).astype(np.uint8)
+    screen_final = imgpy.SLM_screen_Correct(
+        screen_shift, LUT=LUT, correctionImgPath=CAL_BMP
     )
-    print(f"  hardware capture in {time.perf_counter() - t0:.1f}s; analysing...")
 
-    metrics_path = f"/tmp/cl_iter_{tag}_metrics.json"
-    preview_path = f"/tmp/cl_iter_{tag}_preview.png"
-    subprocess.run(
-        ["uv", "run", "python", "scripts/sheet/analysis_sheet.py",
-         "--after", AFTER_PNG, "--before", BEFORE_PNG, "--params", PARAMS_JSON,
-         "--peak", "signal",
-         "--out", metrics_path, "--preview", preview_path],
-        cwd=REPO, check=True,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
-    metrics = json.load(open(os.path.join(REPO, metrics_path)))
+    region = measure_region(target_amp.shape, target_amp, margin=5)
+    E_out = fft_propagate(SLM.initGaussianAmp * np.exp(1j * phase_wrapped))
+    F = float(_fidelity(E_out, target_amp, region))
+    eta = float(_efficiency(E_out, region))
+    return screen_final, phase_wrapped, F, eta
 
-    img = np.array(Image.open(os.path.join(REPO, AFTER_PNG)).convert("L"))
-    roi = metrics["roi"]
-    cy, cx, dx, dy = roi["cy"], roi["cx"], roi["dx"], roi["dy"]
-    margin = 2
-    y0 = max(0, cy - margin * dy); y1 = min(img.shape[0], cy + margin * dy)
-    x0 = max(0, cx - margin * dx); x1 = min(img.shape[1], cx + margin * dx)
-    crop = img[y0:y1, x0:x1].astype(np.float64)
 
-    half = crop.shape[1] // 2
-    left = crop[:, :half].sum()
-    right = crop[:, half:].sum()
-    asym = (left - right) / (left + right) if (left + right) > 0 else 0.0
-
-    aspect = float(dx) / max(float(dy), 1.0)
-    fid_corr = float(metrics["metrics"]["fidelity_corr"])
-    eff = float(metrics["metrics"]["efficiency"])
-    shape_score = aspect * fid_corr   # higher = better
-
-    archive = os.path.join(REPO, ARCHIVE_DIR, f"closed_loop_{tag}_after.png")
-    shutil.copy(os.path.join(REPO, AFTER_PNG), archive)
-    Image.fromarray(crop.astype(np.uint8)).save(
-        os.path.join(REPO, ARCHIVE_DIR, f"closed_loop_{tag}_zoom.png"))
-
-    out = {
-        "tag": tag,
-        "bcm_dx_um": int(bcm_dx_um),
-        "roi_dx": int(dx), "roi_dy": int(dy),
-        "aspect": aspect, "fid_corr": fid_corr, "efficiency": eff,
-        "asym_lr": asym, "shape_score": shape_score, "archive": archive,
+def save_payload(screen: np.ndarray, SLM: SLM_class, extra: dict) -> None:
+    np.savez_compressed(PAYLOAD_PATH, slm_screen=screen)
+    params = {
+        "algorithm": "CGM-closed-loop",
+        "payload": str(PAYLOAD_PATH.relative_to(REPO)),
+        "compute_grid": [int(SLM.ImgResY), int(SLM.ImgResX)],
+        "slm_native": [int(SLM.SLMRes[1]), int(SLM.SLMRes[0])],
+        "focal_pitch_x_um_per_px": round(float(SLM.Focalpitchx), 4),
+        "focal_pitch_y_um_per_px": round(float(SLM.Focalpitchy), 4),
+        "runner_defaults": {"etime_us": ETIME_US, "n_avg": N_AVG, "monitor": 1},
+        "target": "light_sheet",
+        "sheet_flat_width_px": SHEET_FLAT_WIDTH,
+        "sheet_gaussian_sigma_px": SHEET_GAUSSIAN_SIGMA,
+        "sheet_edge_sigma_px": SHEET_EDGE_SIGMA,
+        "sheet_angle_rad": SHEET_ANGLE_RAD,
+        "fresnel_applied_on_linux": True,
+        "fresnel_shift_distance_um": FRESNEL_SD_UM,
+        "calibration_applied_on_linux": True,
+        "calibration_bmp": CAL_BMP,
+        "LUT": LUT,
+        "cgm_max_iterations": CGM_MAX_ITER,
+        "cgm_steepness": CGM_STEEPNESS,
+        "cgm_setting_eta": CGM_SETTING_ETA,
+        "cgm_eta_steepness": CGM_ETA_STEEPNESS,
+        "timestamp_local": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime()),
+        **extra,
     }
-    print(
-        f"  → ROI {dx}×{dy} aspect={aspect:.2f}  asym={asym:+.3f}  "
-        f"fid={fid_corr:.3f}  eff={eff*100:.1f}%  shape_score={shape_score:.3f}"
+    with open(PARAMS_PATH, "w") as f:
+        json.dump(params, f, indent=2)
+
+
+def push_and_capture() -> None:
+    subprocess.run(
+        ["./push_run.sh", str(PAYLOAD_PATH.relative_to(REPO))],
+        cwd=str(REPO), check=True,
     )
+
+
+def bin_profile(profile: np.ndarray, a: int, b: int, n: int) -> np.ndarray:
+    """Split ``profile[a:b]`` into n equal-width bins and return the mean
+    of each bin; falls back to profile mean if the slice is empty."""
+    flat = profile[a:b]
+    if flat.size == 0:
+        return np.ones(n) * float(profile.mean())
+    edges = np.linspace(0, len(flat), n + 1)
+    out = np.zeros(n)
+    for i in range(n):
+        lo = int(round(edges[i]))
+        hi = max(int(round(edges[i + 1])), lo + 1)
+        out[i] = float(flat[lo:hi].mean())
     return out
 
 
 def main():
+    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+
+    SLM = SLM_class()
+    SLM.arraySizeBit = [10, 10]
+    SLM.image_init(
+        initGaussianPhase_user_defined=np.zeros((1024, 1024)),
+        Plot=False, beam_center_um=(0, 0),
+    )
+    ny, nx = int(SLM.ImgResY), int(SLM.ImgResX)
+    target_center = (
+        (ny - 1) / 2.0 - TARGET_SHIFT_FPX,
+        (nx - 1) / 2.0 - TARGET_SHIFT_FPX,
+    )
+    target_base = SLM.light_sheet_target(
+        flat_width=SHEET_FLAT_WIDTH,
+        gaussian_sigma=SHEET_GAUSSIAN_SIGMA,
+        angle=SHEET_ANGLE_RAD,
+        edge_sigma=SHEET_EDGE_SIGMA,
+        center=target_center,
+    )
+    init_phi_seed = SLM.stationary_phase_sheet(
+        flat_width=SHEET_FLAT_WIDTH,
+        gaussian_sigma=None,
+        angle=SHEET_ANGLE_RAD,
+        center=target_center,
+    )
+
+    # Flat-top columns (angle=0 → flat region runs along x).
+    x_off = np.arange(nx) - target_center[1]
+    flat_cols = np.where(np.abs(x_off) <= SHEET_FLAT_WIDTH / 2.0)[0]
+    N = int(flat_cols.size)
+    print(f"[init] flat-top spans {N} target columns: "
+          f"x={flat_cols[0]}..{flat_cols[-1]}")
+
+    weights = np.ones(N)
+    warm_phi = None
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     history: list[dict] = []
-    bcm = INITIAL_BCM
-    step = INITIAL_STEP
-    last_asym_sign = 0
-    best = None
+    best: dict | None = None
 
-    print(f"Closed-loop start: BCM_DX={bcm} μm, step={step} μm, "
-          f"|asym| target ≤ {ASYM_TOL}, shape_score floor {SHAPE_FLOOR}× best")
+    for it in range(MAX_ITER):
+        tag = f"iter{it:02d}"
+        t0 = time.perf_counter()
+        print(f"\n=== {tag}  (weights mean={weights.mean():.3f}, "
+              f"range [{weights.min():.3f}, {weights.max():.3f}]) ===")
 
-    for i in range(MAX_ITER):
-        result = run_iteration(bcm, f"i{i:02d}")
-        history.append(result)
+        target_mod = apply_weights(target_base, flat_cols, weights)
+        # Warm-start from the previous iter's phase once we have one.
+        init_phi = warm_phi if warm_phi is not None else init_phi_seed
+        n_iter = CGM_MAX_ITER if warm_phi is None else CGM_WARM_ITER
+        print(f"[{tag}] CGM ({n_iter} iters, device={device}, "
+              f"warm={'no' if warm_phi is None else 'yes'})...")
+        screen, warm_phi, F, eta = build_slm_screen(
+            SLM, target_mod, init_phi, n_iter,
+        )
+        print(f"[{tag}] sim fidelity={F:.6f}  efficiency={eta*100:.2f}%")
 
-        # Track best by shape_score; tie-break by lower |asym|.
-        if (best is None
-                or result["shape_score"] > best["shape_score"]
-                or (abs(result["shape_score"] - best["shape_score"]) < 1e-6
-                    and abs(result["asym_lr"]) < abs(best["asym_lr"]))):
-            best = result
+        save_payload(screen, SLM, extra={
+            "closed_loop_iter": it,
+            "closed_loop_weights": [round(float(w), 5) for w in weights],
+            "sim_fidelity": F,
+            "sim_efficiency": eta,
+        })
 
-        if abs(result["asym_lr"]) <= ASYM_TOL and result["aspect"] >= 2.5:
-            print(f"\n✓ converged: |asym|={abs(result['asym_lr']):.3f} ≤ {ASYM_TOL} "
-                  f"AND aspect={result['aspect']:.2f} ≥ 2.5")
+        print(f"[{tag}] pushing & capturing...")
+        push_and_capture()
+
+        plot_out = HISTORY_DIR / f"{tag}_plot.png"
+        json_out = HISTORY_DIR / f"{tag}_result.json"
+        result = analyze_after_bmp(AFTER_BMP, plot_out, json_out)
+        rms = float(result["rms_percent"])
+        ppk = float(result["pk_pk_percent"])
+        a, b = result["flat_top_bounds_px"]
+        profile = np.asarray(result["profile_values"])
+        dt = time.perf_counter() - t0
+        print(f"[{tag}] measured: RMS={rms:.2f}%   Pk-Pk={ppk:.2f}%   "
+              f"flat=[{a},{b})   iter_time={dt:.1f}s")
+
+        hist_entry = {
+            "tag": tag, "iter": it,
+            "rms_percent": rms, "pk_pk_percent": ppk,
+            "flat_bounds_px": [a, b],
+            "weights": [float(w) for w in weights],
+            "sim_fidelity": F, "sim_efficiency": eta,
+            "plot_path": str(plot_out),
+        }
+        history.append(hist_entry)
+        if best is None or rms < best["rms_percent"]:
+            best = hist_entry
+
+        if rms <= RMS_TOL:
+            print(f"  ✓ converged: RMS {rms:.2f}% ≤ tol {RMS_TOL}%")
             break
 
-        # Hard guardrail: if shape collapsed vs best so far, REVERT.
-        if (best is not None and best is not result
-                and result["shape_score"] < SHAPE_FLOOR * best["shape_score"]):
-            print(f"  ! shape regression: {result['shape_score']:.3f} < "
-                  f"{SHAPE_FLOOR}×{best['shape_score']:.3f}; reverting to "
-                  f"BCM_DX={best['bcm_dx_um']} and shrinking step {step}→{step // 2}")
-            bcm = best["bcm_dx_um"]
-            step = max(step // 2, MIN_STEP)
-            last_asym_sign = 0
-            continue
+        bins = bin_profile(profile, a, b, N)
+        mean = float(bins.mean()) if bins.mean() > 0 else 1.0
+        raw_w = np.sqrt(mean / np.clip(bins, 1e-6, None))
+        step = (1.0 - DAMPING) + DAMPING * raw_w
+        weights = np.clip(weights * step, *WEIGHT_CLIP)
+        weights /= weights.mean()
+        print(f"[{tag}] bins={np.round(bins, 1).tolist()}")
+        print(f"[{tag}] new weights={np.round(weights, 3).tolist()}")
 
-        cur_sign = 1 if result["asym_lr"] > 0 else -1
-        if last_asym_sign != 0 and cur_sign != last_asym_sign:
-            step = max(step // 2, MIN_STEP)
-            print(f"  asym sign flipped → halving step to {step}")
-        last_asym_sign = cur_sign
-
-        # asym>0 = brighter on left.  Empirically more-negative bcm reduces
-        # the left bias on this rig.
-        bcm -= cur_sign * step
-
-        if step < MIN_STEP:
-            print(f"  step shrunk below MIN_STEP={MIN_STEP}; stopping")
-            break
-
-    # Final report.
     print("\n" + "=" * 78)
-    print("Closed-loop summary")
+    print(f"Closed-loop summary ({len(history)} iterations)")
     print("=" * 78)
-    print(f"{'iter':>4}  {'BCM_DX':>7}  {'asym':>7}  {'aspect':>7}  "
-          f"{'fid':>6}  {'eff':>6}  {'shape_score':>11}")
+    print(f"{'tag':>8}  {'RMS%':>7}  {'Pk-Pk%':>8}  {'sim_F':>8}  {'sim_eta%':>8}")
     for h in history:
-        marker = " ← best" if h is best else ""
-        print(f"{h['tag']:>4}  {h['bcm_dx_um']:>7}  {h['asym_lr']:>+7.3f}  "
-              f"{h['aspect']:>7.2f}  {h['fid_corr']:>6.3f}  "
-              f"{h['efficiency']*100:>5.1f}%  {h['shape_score']:>11.3f}{marker}")
+        mark = " ← best" if h is best else ""
+        print(f"{h['tag']:>8}  {h['rms_percent']:>7.2f}  {h['pk_pk_percent']:>8.2f}  "
+              f"{h['sim_fidelity']:>8.4f}  {h['sim_efficiency']*100:>8.2f}{mark}")
 
     if best is not None:
-        print(f"\nBest: {best['tag']}  BCM_DX={best['bcm_dx_um']}  "
-              f"shape_score={best['shape_score']:.3f}  asym={best['asym_lr']:+.3f}  "
-              f"aspect={best['aspect']:.2f}  fid={best['fid_corr']:.3f}")
-        # Re-run the best config one more time so the live testfile_sheet
-        # state matches (and the archive after.png reflects the final).
-        if best is not history[-1]:
-            print(f"\nRe-running best ({best['tag']}) so final state matches…")
-            final = run_iteration(best["bcm_dx_um"], "FINAL")
-            history.append(final)
+        shutil.copy(best["plot_path"], BEST_PLOT)
+        with open(BEST_JSON, "w") as f:
+            json.dump(best, f, indent=2)
+        print(f"\nBest: {best['tag']}  RMS={best['rms_percent']:.2f}%  "
+              f"Pk-Pk={best['pk_pk_percent']:.2f}%")
+        print(f"Best plot → {BEST_PLOT.relative_to(REPO)}")
+        print(f"Best meta → {BEST_JSON.relative_to(REPO)}")
 
-    out_path = os.path.join(REPO, ARCHIVE_DIR, "closed_loop_history.json")
-    with open(out_path, "w") as fh:
-        json.dump(history, fh, indent=2)
-    print(f"\nHistory saved: {out_path}")
+    with open(HISTORY_DIR / "history.json", "w") as f:
+        json.dump(history, f, indent=2)
+    print(f"Full history → {(HISTORY_DIR / 'history.json').relative_to(REPO)}")
 
 
 if __name__ == "__main__":

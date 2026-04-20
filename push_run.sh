@@ -89,10 +89,23 @@ else
     echo "  pushed ${FILENAME} (no params.json sibling)"
 fi
 
-echo "[3/4] Triggering slmrun.bat${HOLD_FLAG:+ (${HOLD_FLAG})}..."
+# Pick up runner_defaults (etime_us, n_avg) from the sidecar params.json
+# so lowering exposure in the payload script actually reaches the runner.
+RUNNER_ARGS=""
+if [ -f "${PARAMS}" ]; then
+    read ETIME NAVG < <(python3 -c "
+import json, sys
+d = json.load(open('${PARAMS}')).get('runner_defaults', {})
+print(d.get('etime_us', ''), d.get('n_avg', ''))
+")
+    [ -n "${ETIME}" ] && RUNNER_ARGS+=" --etime-us ${ETIME}"
+    [ -n "${NAVG}" ]  && RUNNER_ARGS+=" --n-avg ${NAVG}"
+fi
+
+echo "[3/4] Triggering slmrun.bat${HOLD_FLAG:+ (${HOLD_FLAG})}${RUNNER_ARGS:+ (args:${RUNNER_ARGS})}..."
 ${SSH_CMD} "cd /d \"${WIN_RUNNER_BS}\" && slmrun.bat \
     --payload incoming\\${SUBDIR_BS}\\${FILENAME} \
-    --output-prefix ${RUN_PREFIX} ${HOLD_FLAG}"
+    --output-prefix ${RUN_PREFIX}${RUNNER_ARGS} ${HOLD_FLAG}"
 
 if [ -n "${HOLD_FLAG}" ]; then
     echo "[4/4] hold-on mode: skipping pull."
