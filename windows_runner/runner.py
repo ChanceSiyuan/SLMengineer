@@ -32,7 +32,14 @@ Usage::
 
     python runner.py --payload incoming\\testfile_lg_payload.npz \\
                      --output-prefix testfile_lg \\
-                     [--etime-us 4000] [--n-avg 10] [--monitor 1]
+                     [--etime-us 4000] [--n-avg 10] [--monitor 1] \\
+                     [--analyze]
+
+With ``--analyze`` the runner additionally calls
+``C:\\Users\\Galileo\\SLMengineer\\scripts\\sheet\\analysis_sheet.py``
+on the captured ``_after.bmp`` and writes
+``data\\<prefix>_analysis.{png,json}`` — giving a fully Windows-resident
+display → capture → analysis pipeline with no round-trip to Linux.
 
 The Linux-side orchestrator ``push_run.sh`` (at the SLMengineer repo
 root) invokes this script via ssh after scp'ing the payload into
@@ -53,20 +60,17 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-# The runner reuses the SLM display / camera wrappers from the main
-# SLMengineer repo's src/slm/ package (already installed on the
-# Windows lab box under C:\Users\Galileo\SLMengineer\).  These wrappers
-# are CPU-only (no torch, no scipy.optimize) so importing them does not
-# pull the heavy CGM stack onto the hardware box.
-#
-# If you prefer a fully standalone runner, replace these imports with
-# direct calls to slmpy and the Vimba Python API.
-_MAIN_REPO_SRC = r"C:\Users\Galileo\SLMengineer\src"
-if os.path.isdir(_MAIN_REPO_SRC) and _MAIN_REPO_SRC not in sys.path:
-    sys.path.insert(0, _MAIN_REPO_SRC)
+# Hardware wrappers live next to this file (deploy all three together
+# to C:\Users\Galileo\slm_runner\).  Keeping them here — rather than
+# importing from the main SLMengineer repo — makes the runner truly
+# self-contained, so the hardware box does not inherit Linux-side
+# refactors of src/slm/.
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _THIS_DIR not in sys.path:
+    sys.path.insert(0, _THIS_DIR)
 
-from slm.display import SLMdisplay  # noqa: E402
-from slm.camera import VimbaCamera   # noqa: E402
+from slm_display import SLMdisplay    # noqa: E402  (wx-based, from slmpy)
+from vimba_camera import VimbaCamera  # noqa: E402  (vmbpy-based)
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -129,6 +133,14 @@ def main():
         help="Display the payload screen on the SLM and keep it until the "
              "process is killed (Ctrl+C).  Skips all camera captures and "
              "output saving.  Default: off.",
+    )
+    ap.add_argument(
+        "--analyze", action="store_true",
+        help="After saving the BMPs, run the sibling analysis_sheet.py "
+             "on the 'after' frame and save <prefix>_analysis.{png,json} "
+             "alongside the BMPs.  Requires analysis_sheet.py to be "
+             "deployed next to this runner (C:\\Users\\Galileo\\slm_runner\\). "
+             "Default: off.",
     )
     args = ap.parse_args()
 
@@ -239,6 +251,18 @@ def main():
         f"  {prefix}_after.bmp\n"
         f"  {prefix}_run.json"
     )
+
+    if args.analyze:
+        # Deferred import: analysis_sheet pulls matplotlib/scipy, which the
+        # pure-capture path does not need.  The sibling copy next to this
+        # file (slm_runner\analysis_sheet.py) is kept in sync manually.
+        from analysis_sheet import analyze as _analyze_after
+        plot_path = out_dir / f"{prefix}_analysis.png"
+        json_path = out_dir / f"{prefix}_analysis.json"
+        print(f"\n[6/6] Analysing {after_bmp.name}...")
+        _analyze_after(after_bmp, plot_path, json_path)
+        print(f"  {prefix}_analysis.png\n  {prefix}_analysis.json")
+
     print("\nDone.")
 
 

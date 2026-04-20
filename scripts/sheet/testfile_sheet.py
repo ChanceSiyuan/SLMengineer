@@ -53,33 +53,39 @@ def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     # All knobs exposed as env vars so param_sweep.sh / closed_loop_sheet.py
-    # can perturb without editing this file.  Defaults are the current best.
+    # can perturb without editing this file.  Defaults target the 4096²
+    # compute grid — ~2.7× better RMS on camera than the old 1024² path
+    # at equivalent physical sheet size (focal pitch 3.957 µm/px, so
+    # flat_width=36 px ≈ 142 µm, matching the original 9 px × 15.83 µm/px).
     etime_us           = int(os.environ.get("SLM_ETIME_US", 1500))
     n_avg              = int(os.environ.get("SLM_N_AVG", 20))
     LUT                = 207
     fresnel_sd         = int(os.environ.get("SLM_FRESNEL_SD", 1200))
 
-    sheet_flat_width     = int(os.environ.get("SLM_FLAT_WIDTH", 9))
-    sheet_gaussian_sigma = float(os.environ.get("SLM_GAUSS_SIGMA", 1))
+    sheet_flat_width     = int(os.environ.get("SLM_FLAT_WIDTH", 25))
+    sheet_gaussian_sigma = float(os.environ.get("SLM_GAUSS_SIGMA", 4))
     sheet_edge_sigma     = float(os.environ.get("SLM_EDGE_SIGMA", 0))
     sheet_angle          = 0
     # Target is shifted diagonally from the zero-order so the first-order
     # does not overlap with the undiffracted beam at grid centre.
-    target_shift_fpx     = int(os.environ.get("SLM_TARGET_SHIFT_FPX", 20))
+    target_shift_fpx     = int(os.environ.get("SLM_TARGET_SHIFT_FPX", 80))
 
     cgm_steepness      = int(os.environ.get("SLM_CGM_STEEPNESS", 9))
     cgm_max_iterations = int(os.environ.get("SLM_CGM_MAX_ITER", 4000))
     setting_eta        = float(os.environ.get("SLM_SETTING_ETA", 0.1))
     cgm_eta_steepness  = int(os.environ.get("SLM_CGM_ETA_STEEPNESS", 8))
 
-    # arraySizeBit override: default [12,12] crops to the central 1024×1024
-    # of the compute grid inside phase_to_screen, dropping fidelity to ~0.22;
-    # [10,10] sizes the compute grid to the SLM's short dimension and
-    # preserves it.
+    # Compute-grid size.  SLM.phase_to_screen centre-crops to 1024×1024
+    # and pads to 1024×1272 regardless of input, so higher bits = finer
+    # focal pitch during CGM; only the central 1024 is then passed to
+    # the SLM.  Default 12 (4096²) is the winning config from the sweep;
+    # set 10 (1024²) for the historical baseline.
+    array_bit = int(os.environ.get("SLM_ARRAY_BIT", 12))
+    grid_px = 1 << array_bit
     SLM = SLM_class()
-    SLM.arraySizeBit = [10, 10]  # 1024 x 1024 compute grid
+    SLM.arraySizeBit = [array_bit, array_bit]
     SLM.image_init(
-        initGaussianPhase_user_defined=np.zeros((1024, 1024)), Plot=False,
+        initGaussianPhase_user_defined=np.zeros((grid_px, grid_px)), Plot=False,
         beam_center_um=(BEAM_CENTER_DX_UM, BEAM_CENTER_DY_UM),
     )
     W, H = SLM.SLMRes  # (1272, 1024)

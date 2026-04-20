@@ -183,6 +183,64 @@ realigned the expected sequence is:
 
 ---
 
+# Sweep of `arraySizeBit`  (new best — 2026-04-20)
+
+Hypothesis: running CGM on a 4× finer compute grid and relying on
+`SLM.phase_to_screen`'s built-in centre-crop (1024×1024 out of 4096²) gives
+the optimiser higher spatial-frequency headroom to shape the flat-top edges
+— same pattern as `scripts/wgs_square/testfile_wgs_square.py`.  Added an
+`SLM_ARRAY_BIT` env-var knob to `scripts/sheet/testfile_sheet.py` (default
+`10`, 1024²).
+
+### Config (both runs use this session's locked-in `fresnel_sd=1200`, `etime_us=1500`, `n_avg=20`)
+
+| env                    | `[10,10]` baseline | `[12,12]` candidate |
+| ---------------------- | ------------------ | ------------------- |
+| `SLM_ARRAY_BIT`        | 10 (default)       | 12                  |
+| compute grid           | 1024 × 1024        | 4096 × 4096         |
+| focal pitch            | 15.83 µm/px        | 3.96 µm/px          |
+| `SLM_FLAT_WIDTH`       | 9 px  (≈142 µm)    | 36 px (≈142 µm)     |
+| `SLM_TARGET_SHIFT_FPX` | 20                 | 80                  |
+| `SLM_GAUSS_SIGMA`      | 1                  | 4                   |
+| `SLM_CGM_MAX_ITER`     | 4000               | 4000                |
+
+### Results
+
+The analysis script's top-hat fit mis-bounds the wider softer edges the 4096
+run produces (it pulls the lower vertical gray line into the rising edge),
+so compare the two over the **intensity > 85 % of peak** core window:
+
+| grid     | core px | mean  | RMS %  | Pk-Pk % |
+| -------- | ------- | ----- | ----- | ------- |
+| `[10,10]`| 63      | 103.8 | 10.97 | 38.85   |
+| `[12,12]`| 53      | 193.8 | **4.01** | **15.48** |
+
+Roughly **2.7 ×** better RMS and **2.5 ×** better Pk-Pk at 4096, with a
+single continuous bright stripe on the 2D heatmap (no 2-lobe split).
+
+![4096-grid light sheet](Figures/arraybit_12_sheet.png)
+
+Per-point artefacts:
+
+- `docs/sweep_sheet/param_sweep/arraybit_10_plot.png` + `_result.json`
+- `docs/sweep_sheet/param_sweep/arraybit_12_plot.png` + `_result.json`
+  (1000 iters, early confirmation)
+- `docs/sweep_sheet/param_sweep/arraybit_12_cgm4000_plot.png` + `_result.json`
+  (4000 iters, final)
+
+### Follow-ups suggested by this result
+
+1. Make `SLM_ARRAY_BIT=12` the new default after the camera alignment fix
+   tomorrow, since the shape is still hardware-asymmetric.
+2. The `analysis_sheet._fit_flat_top` top-hat + Gaussian-edge model is
+   fragile on soft-edge profiles — consider switching to an "above-threshold
+   core" metric to match what is actually usable for microscopy.
+3. Re-run the `closed_loop_sheet.py` target re-weighting on top of the
+   `[12,12]` base shape — much more headroom for feedback now that the
+   base profile is already 4 % RMS.
+
+---
+
 # Tonight’s best configuration
 
 Best payload this session:

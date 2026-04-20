@@ -19,11 +19,17 @@
 #   --png           Convert each BMP into a 2D-color heatmap PNG on Windows
 #                   (matplotlib "hot" cmap, auto-scaled, with colorbar); pull
 #                   the color PNGs only (BMPs stay on the Windows side).
+#   --png-analy     Run scripts/sheet/analysis_sheet.py on the Windows side
+#                   against the captured after.bmp and pull only the
+#                   resulting 2-panel analysis PNG + result JSON back.
+#                   The analysis script is scp'd up alongside the payload so
+#                   the remote copy always matches the local repo.
+#                   Mutually exclusive with --png.
 
 set -e
 
 if [ $# -lt 1 ]; then
-    echo "usage: $0 <payload_file> [--hold-on] [--png]" >&2
+    echo "usage: $0 <payload_file> [--hold-on] [--png | --png-analy]" >&2
     exit 1
 fi
 
@@ -32,13 +38,20 @@ shift
 
 HOLD_FLAG=""
 PNG_MODE=""
+ANALY_MODE=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        --hold-on) HOLD_FLAG="--hold-on"; shift ;;
-        --png) PNG_MODE=1; shift ;;
+        --hold-on)   HOLD_FLAG="--hold-on"; shift ;;
+        --png)       PNG_MODE=1; shift ;;
+        --png-analy) ANALY_MODE=1; shift ;;
         *) echo "unknown arg: $1" >&2; exit 1 ;;
     esac
 done
+
+if [ -n "${PNG_MODE}" ] && [ -n "${ANALY_MODE}" ]; then
+    echo "ERROR: --png and --png-analy are mutually exclusive" >&2
+    exit 1
+fi
 
 if [ ! -f "${PAYLOAD}" ]; then
     echo "ERROR: payload file not found: ${PAYLOAD}" >&2
@@ -159,6 +172,27 @@ PY
     PULL_FILES=(
         "${BASE}_before.png"
         "${BASE}_after.png"
+        "${BASE}_run.json"
+    )
+elif [ -n "${ANALY_MODE}" ]; then
+    echo "[4/5] Uploading analysis_sheet.py and running it on Windows..."
+    ${SCP_CMD} scripts/sheet/analysis_sheet.py \
+        "${USER}@${SERVER_IP}:${REMOTE_INCOMING_FS}/" > /dev/null
+    REMOTE_ANALYSIS_WIN="${WIN_RUNNER_WIN}/incoming/${SUBDIR}/analysis_sheet.py"
+    AFTER_WIN="${REMOTE_DATA_WIN}/${BASE}_after.bmp"
+    PLOT_WIN="${REMOTE_DATA_WIN}/${BASE}_analysis.png"
+    RESULT_WIN="${REMOTE_DATA_WIN}/${BASE}_analysis.json"
+    ${SSH_CMD} "cd /d C:\\Users\\Galileo\\SLMengineer && uv run python \
+        \"${REMOTE_ANALYSIS_WIN}\" \
+        --after \"${AFTER_WIN}\" \
+        --plot  \"${PLOT_WIN}\" \
+        --result \"${RESULT_WIN}\""
+
+    echo "[5/5] Pulling analysis PNG + JSON + run.json into ${LOCAL_DATA_DIR}/ ..."
+    mkdir -p "${LOCAL_DATA_DIR}"
+    PULL_FILES=(
+        "${BASE}_analysis.png"
+        "${BASE}_analysis.json"
         "${BASE}_run.json"
     )
 else
