@@ -217,6 +217,38 @@ def light_sheet(
     return field
 
 
+def light_sheet_1d(
+    length: int,
+    flat_width: float,
+    center: float | None = None,
+    edge_sigma: float = 0.0,
+) -> np.ndarray:
+    """Pure 1D top-hat along the line axis — companion to :func:`light_sheet`.
+
+    For the dimension-decomposed light-sheet CGM (issue #21): when the SLM
+    phase is set constant in ``y`` the focal-plane y-envelope is given by
+    the natural 2F transform of the input Gaussian, so the target only
+    needs to specify the along-line shape.  ``light_sheet_1d`` returns
+    exactly that 1D profile.
+
+    Parameters mirror :func:`light_sheet`'s along-line arguments.
+    """
+    if center is None:
+        center = (length - 1) / 2.0
+    u = np.arange(length, dtype=np.float64) - center
+    half = flat_width / 2.0
+    if edge_sigma > 0:
+        dist_outside = np.maximum(0.0, np.abs(u) - half)
+        profile = np.exp(-(dist_outside ** 2) / (2.0 * edge_sigma ** 2))
+    else:
+        profile = (np.abs(u) <= half).astype(np.float64)
+    field = profile.astype(np.complex128)
+    power = float(np.sum(np.abs(field) ** 2))
+    if power > 0:
+        field /= np.sqrt(power)
+    return field
+
+
 def lg_mode(
     shape: tuple[int, int],
     ell: int,
@@ -529,6 +561,19 @@ def measure_region(
     from scipy.ndimage import binary_dilation
 
     struct = np.ones((2 * margin + 1, 2 * margin + 1))
+    dilated = binary_dilation(mask.astype(bool), structure=struct)
+    return dilated.astype(np.float64)
+
+
+def measure_region_1d(
+    target_1d: np.ndarray,
+    margin: int = 5,
+) -> np.ndarray:
+    """1D companion to :func:`measure_region` for the 1D CGM path."""
+    mask = np.abs(target_1d) > 0
+    from scipy.ndimage import binary_dilation
+
+    struct = np.ones(2 * margin + 1, dtype=bool)
     dilated = binary_dilation(mask.astype(bool), structure=struct)
     return dilated.astype(np.float64)
 

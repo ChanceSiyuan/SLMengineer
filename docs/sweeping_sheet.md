@@ -241,6 +241,158 @@ Per-point artefacts:
 
 ---
 
+# 1D CGM dimension-decomposition (issue #21, 2026-04-20)
+
+**Hypothesis** (issue #21): the SLM input is a 2D-separable Gaussian
+`exp(-(x²+y²)/2σ²)`.  If we force the phase constant in `y`
+(`φ(x,y)=φ(x)`), the focal-plane field factors as
+`F_x{exp(iφ(x))·exp(-x²/2σ²)} · F_y{exp(-y²/2σ²)}` — the y factor is
+automatically the natural focal Gaussian `λf/πw₀`, and we only need to
+solve a 1D CGM on x to shape the top-hat.  Saves compute (1D vs 2D FFT
+at the same length) and removes the perpendicular-axis cost term the
+2D loop was partially optimising.
+
+**Implementation.**  Added `CGM_phase_generate_1d` + `_run_cgm_torch_1d`
+to `src/slm/cgm.py` (1D FFT / 1D sinc envelope; optimiser body is a
+literal port of the 2D loop — only the FFT/sinc helpers differ).
+Added `light_sheet_1d` and `measure_region_1d` to `src/slm/targets.py`
+and `SLM_class.stationary_phase_sheet_1d` to `src/slm/generation.py`.
+Rewrote `scripts/1d_sheet/testfile_1dsheet.py` as the 1D analog of
+`scripts/sheet/testfile_sheet.py`: it slices the centre row of
+`SLM.initGaussianAmp`, runs 1D CGM, then broadcasts φ(x)→φ(x,y)
+before the existing `phase_to_screen` + Fresnel + calibration pipeline.
+The 2D path (`CGM_phase_generate`, `_run_cgm_torch`) is untouched and
+its SHA-256-verified payload is byte-identical to before the 1D patch.
+
+**Measured result** (over the >85 % peak core, apples-to-apples):
+
+| quantity                     | 2D reference | **1D new**    | delta |
+| ---------------------------- | ------------ | ------------- | ------ |
+| core width (camera px)       | 53           | **69**        | +30 % |
+| flat-top mean intensity      | 193.8        | 141.5         | −27 % |
+| RMS %                        | 4.01         | **3.99**      | tie |
+| Pk-Pk %                      | 15.48        | **12.96**     | −2.52 (−16 %) |
+| CGM wall time (4000 iters)   | 295 s (4096²) | **66 s** (length 4096) | 4.5× faster |
+
+![1D-CGM light sheet](Figures/1d_cgm_sheet.png)
+
+Camera heatmap shows a continuous bright plateau — no 2-lobe spot chain.
+One mild dip near the right third of the flat top remains; compatible
+with the 12.96 % Pk-Pk.  The lower absolute intensity is consistent
+with the y-axis Gaussian being narrower than the 2D target (natural
+σ = 11.73 µm vs 2D target σ = 15.83 µm; ratio 0.74×), so less total
+power is concentrated into the detector's horizontal slice.
+
+**Conclusion.**  Matches the 2D reference on uniformity, beats it on
+flat-top width and Pk-Pk, and runs 4-5× faster.  Hypothesis confirmed.
+Raw artefacts: `docs/sweep_sheet/1d_vs_2d/1d_{plot.png,result.json}`,
+payload `payload/1d_sheet/testfile_1dsheet_payload.npz`.
+
+## 1D follow-up: edge-induced ringing diagnosis + fix (2026-04-20)
+
+The default (`SLM_EDGE_SIGMA=0`) 1D run shows periodic ripple along the
+sheet axis that is not visible on the 2D capture.  The correct physical
+picture is **edge-induced ringing from a band-limited system fitting a
+hard-edged target** — not "discrete Fourier harmonics of a rectangle".
+The ideal top-hat's Fourier transform is a continuous sinc; the CGM
+residual against a Gaussian-input band piles up at the spatial
+frequencies $k \sim n/W$ set by the target width, not by any discrete
+spectrum of the rectangle itself.
+
+In 1D the optimiser has no y-freedom, so the residual must sit in the
+x-axis alone — it is visible on camera as a periodic pattern locked to
+the target width.  In 2D the optimiser redistributes part of the
+residual into y-dependent structure which is suppressed by the camera's
+row-averaging, reducing (not halving) the observed along-x ripple.
+
+### Experiment 1: edge_sigma sweep (mechanism test)
+
+All other knobs at default (4096² grid, `SLM_FLAT_WIDTH=36`, 4000 CGM
+iters).  PSD evaluated on a fixed 50-cam-px plateau-centred window at
+the target-locked period `W_cam = 36·(3.957/2.4) ≈ 59` cam-px and
+sub-multiples.  Amplitudes are % of plateau mean.
+
+| σ (focal-px) | plateau mean | RMS % | Pk-Pk % | peak @ 59 px | peak @ 29.5 | peak @ 19.7 | 10-90 edge |
+| ------------ | ------------ | ----- | ------- | ------------ | ----------- | ----------- | ---------- |
+| 0            | 159.9        | 4.27  | 13.55   | **5.75**     | 1.73        | 0.29        | 17.5 px    |
+| 1            | 198.9        | 2.59  | 8.88    | 3.32         | 1.19        | 0.66        | 27.5 px    |
+| 2            | 180.6        | 1.97  | 7.20    | 2.49         | 0.98        | 0.55        | 25.0 px    |
+| **3**        | 169.9        | **1.23** | **5.10** | **1.04**  | 1.12        | 0.48        | 25.0 px    |
+
+The fundamental 59-px peak collapses **5.5×** (5.75 → 1.04 %) and core
+RMS drops **3.5×** as the Gaussian edge taper grows.  Edge roll-off
+widens ~8 cam-px (≈19 µm, <14 % of the 140 µm flat-top width).
+
+### Experiment 2: flat_width sweep (period-locking test)
+
+`SLM_EDGE_SIGMA=0`, otherwise default.  PSD evaluated at the *expected*
+target-locked period for each run; if the period tracks the target
+(not a fixed hardware artefact), these peaks stay dominant.
+
+| `SLM_FLAT_WIDTH` (focal-px) | expected W_cam | RMS % | Pk-Pk % | peak @ W_target | peak @ W/2 |
+| --------------------------- | -------------- | ----- | ------- | --------------- | ---------- |
+| 27                          | 44.5 px        | 7.01  | 26.21   | **7.73**        | 5.64       |
+| 36                          | 59.4 px        | 4.34  | 15.24   | **4.61**        | 2.37       |
+| 45                          | 74.2 px        | 3.64  | 12.26   | **3.70**        | 3.33       |
+
+The dominant ripple period follows the target width, not a fixed camera
+period.  Narrower targets ring worse (~7 % at W=27 vs ~4 % at W=45) —
+consistent with a fixed-bandwidth optical system having to represent
+proportionally higher edge frequencies for a narrower top-hat.
+
+### Verdict
+
+The two experiments jointly nail the diagnosis: the "periodic dots" are
+edge-induced ringing whose period is set by the target flat-top width.
+A modest Gaussian edge taper (`SLM_EDGE_SIGMA=3`, i.e. ≈3 focal-px ≈
+12 µm of rim) is the correct fix and cuts 1D-CGM plateau RMS from
+4.27 % to **1.23 %** — comfortably better than the 2D reference
+(4.01 %) and at the same ~66 s CGM cost.
+
+Artefacts:
+- `docs/sweep_sheet/1d_ringing/` — Group 1 (σ = 0…3) plots, results, ringing-metric JSONs
+- `docs/sweep_sheet/1d_ringing_width/` — Group 2 (W = 27, 36, 45) plots and results
+- `docs/Figures/1d_cgm_sheet_softedge3.png` — best single shot
+
+![1D soft-edge σ=3 camera image](Figures/1d_cgm_sheet_softedge3.png)
+
+## 2D follow-up: same ringing, same fix with larger σ (2026-04-20)
+
+The 2D path has the same edge-induced ringing.  It's partially masked
+by the y-redistribution channel, so the fundamental W-period peak is
+slightly smaller at σ=0 than in 1D, but it's unmistakably present and
+it responds to the same soft-edge fix — just with a **larger σ** needed
+to fully kill the harmonics.
+
+Same config as current 2D defaults (`SLM_ARRAY_BIT=12`, `SLM_FLAT_WIDTH=35`,
+`SLM_GAUSS_SIGMA=5`, `SLM_FRESNEL_SD=1000`, 4000 CGM iters).  Fixed 50-
+cam-px plateau-centred window; target-locked period W_cam ≈ 57.7 cam-px
+(= 35 · 3.957 / 2.4).
+
+| σ (focal-px) | plateau mean | RMS %  | Pk-Pk %  | peak @ W (57.7 px) | peak @ W/2 | edge 10-90 |
+| ------------ | ------------ | ------ | -------- | ------------------ | ---------- | ---------- |
+| 0            | 182.8        | 4.75   | 15.14    | 5.55               | 3.57       | 54.5 px    |
+| 3            | 155.0        | 3.85   | 12.69    | 3.38               | **3.93**   | 26.0 px    |
+| **5**        | 139.3        | **1.54** | **5.26** | **1.91**         | **0.79**   | 26.5 px    |
+
+σ=3 suppresses the fundamental but pushes energy into W/2 — the 2D camera
+image shows three visible bright lobes.  σ=5 kills both W and W/2
+together: **RMS 4.75 % → 1.54 % (3.1×)**; fundamental peak 5.55 % → 1.91 %
+(2.9×).  The plateau is visually a single clean top-hat with smooth
+edges (see figure).
+
+![2D soft-edge σ=5 camera image](Figures/2d_cgm_sheet_softedge5.png)
+
+Default updated: `SLM_EDGE_SIGMA=5` in `scripts/sheet/testfile_sheet.py`
+(and `=3` in `scripts/1d_sheet/testfile_1dsheet.py` — smaller σ suffices
+when the 1D optimiser isn't competing with itself across axes).  The 2D
+path needs a larger taper than the 1D path because the 2D CGM tends to
+fall into a "spot-chain" local minimum (documented elsewhere in this
+repo); a larger edge σ pre-filters the target hard enough that the
+optimiser no longer has a spot-chain basin to slide into.
+
+---
+
 # Tonight’s best configuration
 
 Best payload this session:

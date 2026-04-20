@@ -35,6 +35,10 @@ from scipy.optimize import curve_fit
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+# Allied Vision Alvium 1800 U-1240m (Sony IMX226), 4024 × 3036 px, 1.85 µm
+# pixel pitch.  Override via ``--cam-pitch-um`` if the camera changes.
+CAM_PITCH_UM_DEFAULT = 1.85
+
 
 def _load_bmp(path) -> np.ndarray:
     return np.asarray(Image.open(path).convert("L"), dtype=np.float64)
@@ -120,7 +124,8 @@ def _fit_flat_top(profile: np.ndarray) -> tuple[float, float]:
         return c0, max(hw0, 1.0)
 
 
-def analyze(after_path, plot_path=None, result_path=None) -> dict:
+def analyze(after_path, plot_path=None, result_path=None,
+            cam_pitch_um: float = CAM_PITCH_UM_DEFAULT) -> dict:
     after = _load_bmp(after_path)
     (y0, y1, x0, x1), major_is_y = _detect_sheet_bbox(after)
     roi = after[y0:y1, x0:x1]
@@ -131,13 +136,13 @@ def analyze(after_path, plot_path=None, result_path=None) -> dict:
         peak_minor = int(np.argmax(minor_proj))
         lo = max(peak_minor - 1, 0); hi = min(peak_minor + 2, nx)
         profile = roi[:, lo:hi].mean(axis=1)
-        axis_label = "pixel along sheet (y)"
+        axis_label = "y (µm)"
     else:
         minor_proj = roi.sum(axis=1)
         peak_minor = int(np.argmax(minor_proj))
         lo = max(peak_minor - 1, 0); hi = min(peak_minor + 2, ny)
         profile = roi[lo:hi, :].mean(axis=0)
-        axis_label = "pixel along sheet (x)"
+        axis_label = "x (µm)"
 
     center_px, half_width_px = _fit_flat_top(profile)
     a = max(int(round(center_px - half_width_px)), 0)
@@ -149,22 +154,46 @@ def analyze(after_path, plot_path=None, result_path=None) -> dict:
     ppk_pct = (100.0 * float(flat.max() - flat.min()) / mean_val
                if mean_val > 0 else float("nan"))
 
+    W_um = nx * cam_pitch_um
+    H_um = ny * cam_pitch_um
+    lo_um = lo * cam_pitch_um
+    hi_um = hi * cam_pitch_um
+
     fig, (ax_img, ax_prof) = plt.subplots(
         2, 1, figsize=(10, 8), gridspec_kw={"height_ratios": [1.4, 1.0]},
     )
 
-    im = ax_img.imshow(roi, cmap="jet", aspect="auto")
+    # Top: 2D heatmap on real camera µm axes (origin top-left, natural camera
+    # orientation).  Cyan dashed lines mark the 3-row strip used for the
+    # bottom profile — the colour contrasts strongly against ``jet``.
+    im = ax_img.imshow(
+        roi, cmap="jet", aspect="auto",
+        extent=(0.0, W_um, H_um, 0.0),
+    )
+    if major_is_y:
+        ax_img.axvline(lo_um, color="cyan", lw=1.3, ls="--")
+        ax_img.axvline(hi_um, color="cyan", lw=1.3, ls="--",
+                       label=f"3-col strip x∈[{lo_um:.1f}, {hi_um:.1f}] µm")
+    else:
+        ax_img.axhline(lo_um, color="cyan", lw=1.3, ls="--")
+        ax_img.axhline(hi_um, color="cyan", lw=1.3, ls="--",
+                       label=f"3-row strip y∈[{lo_um:.1f}, {hi_um:.1f}] µm")
+    ax_img.legend(loc="upper right", fontsize=8, framealpha=0.8)
+    ax_img.set_xlabel("x (µm)")
+    ax_img.set_ylabel("y (µm)")
     ax_img.set_title(f"RMS: {rms_pct:.2f}%, Pk-Pk: {ppk_pct:.2f}%")
-    ax_img.set_xticks([]); ax_img.set_yticks([])
     fig.colorbar(im, ax=ax_img, fraction=0.035, pad=0.02)
 
-    u = np.arange(len(profile))
-    ax_prof.plot(u, profile, color="tab:blue", lw=2.0,
+    # Bottom: profile on the same µm scale as the top panel's along-sheet axis.
+    u_um = np.arange(len(profile)) * cam_pitch_um
+    a_um = a * cam_pitch_um
+    b_um = (b - 1) * cam_pitch_um
+    ax_prof.plot(u_um, profile, color="tab:blue", lw=2.0,
                  label="Profile (3-row mean)")
-    ax_prof.hlines(mean_val, a, b - 1, colors="red",
+    ax_prof.hlines(mean_val, a_um, b_um, colors="red",
                    linestyles="--", lw=1.4, label="Mean")
-    ax_prof.axvline(a, color="gray", ls="--", lw=1.0)
-    ax_prof.axvline(b - 1, color="gray", ls="--", lw=1.0,
+    ax_prof.axvline(a_um, color="gray", ls="--", lw=1.0)
+    ax_prof.axvline(b_um, color="gray", ls="--", lw=1.0,
                     label="Pk-Pk Range")
 
     ax_prof.text(
@@ -175,7 +204,11 @@ def analyze(after_path, plot_path=None, result_path=None) -> dict:
         bbox=dict(boxstyle="round,pad=0.4", fc="white", ec="red", lw=1.2),
     )
 
-    ax_prof.set_xlim(0, len(profile) - 1)
+    # Align bottom x-range with the corresponding top-panel axis (0 → W_um
+    # along x, or 0 → H_um along y).  So the two panels share the same
+    # along-sheet scale and the cyan markers in the top panel visually line
+    # up with the intensity profile below.
+    ax_prof.set_xlim(0.0, (len(profile) - 1) * cam_pitch_um)
     ax_prof.set_ylabel("Intensity")
     ax_prof.set_xlabel(axis_label)
     ax_prof.grid(True, alpha=0.3)
@@ -191,14 +224,19 @@ def analyze(after_path, plot_path=None, result_path=None) -> dict:
 
     result = {
         "after_path": str(after_path),
+        "cam_pitch_um": cam_pitch_um,
         "roi_bbox_y0y1x0x1": [int(y0), int(y1), int(x0), int(x1)],
         "roi_shape_yx": [int(ny), int(nx)],
+        "roi_size_um_yx": [round(H_um, 3), round(W_um, 3)],
         "major_is_y": bool(major_is_y),
         "profile_length_px": int(len(profile)),
         "profile_values": [float(v) for v in profile],
+        "profile_slice_minor_px": [int(lo), int(hi)],
+        "profile_slice_minor_um": [round(lo_um, 3), round(hi_um, 3)],
         "flat_top_center_px": float(center_px),
         "flat_top_half_width_px": float(half_width_px),
         "flat_top_bounds_px": [int(a), int(b)],
+        "flat_top_width_um": round((b - a) * cam_pitch_um, 3),
         "flat_top_mean_intensity": mean_val,
         "rms_percent": rms_pct,
         "pk_pk_percent": ppk_pct,
@@ -212,9 +250,11 @@ def analyze(after_path, plot_path=None, result_path=None) -> dict:
         result["result_path"] = str(result_path)
 
     print(f"[ROI]  bbox=({y0},{y1},{x0},{x1}) shape=({ny},{nx}) "
-          f"major_is_y={major_is_y}")
+          f"major_is_y={major_is_y}  "
+          f"({H_um:.1f} × {W_um:.1f} µm @ {cam_pitch_um:.2f} µm/px)")
     print(f"[FIT]  center={center_px:.2f}px  half_width={half_width_px:.2f}px")
-    print(f"[FLAT] [{a},{b})  width={b-a}px  mean={mean_val:.1f}")
+    print(f"[FLAT] [{a},{b})  width={b-a}px "
+          f"({(b-a)*cam_pitch_um:.1f} µm)  mean={mean_val:.1f}")
     print(f"[METR] RMS={rms_pct:.4f}%   Pk-Pk={ppk_pct:.4f}%")
     print(f"[SAVE] {plot_path}")
     if result_path is not None:
@@ -227,12 +267,17 @@ def main():
     ap.add_argument("--after", default="data/sheet/testfile_sheet_after.bmp")
     ap.add_argument("--plot", default="scripts/sheet/analysis_sheet.png")
     ap.add_argument("--result", default="scripts/sheet/analysis_sheet_result.json")
+    ap.add_argument(
+        "--cam-pitch-um", type=float, default=CAM_PITCH_UM_DEFAULT,
+        help=f"Camera pixel pitch in µm (default {CAM_PITCH_UM_DEFAULT} — "
+             "Alvium 1800 U-1240m, IMX226).",
+    )
     args = ap.parse_args()
 
     if not Path(args.after).is_file():
         print(f"ERROR: {args.after} not found", file=sys.stderr)
         sys.exit(1)
-    analyze(args.after, args.plot, args.result)
+    analyze(args.after, args.plot, args.result, cam_pitch_um=args.cam_pitch_um)
 
 
 if __name__ == "__main__":

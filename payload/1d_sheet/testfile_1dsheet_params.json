@@ -1,0 +1,51 @@
+{
+  "algorithm": "CGM-1D (dimension-decomposition, issue #21)",
+  "payload": "payload/1d_sheet/testfile_1dsheet_payload.npz",
+  "compute_grid": [
+    4096,
+    4096
+  ],
+  "slm_native": [
+    1024,
+    1272
+  ],
+  "focal_pitch_x_um_per_px": 3.957,
+  "focal_pitch_y_um_per_px": 3.957,
+  "runner_defaults": {
+    "etime_us": 1500,
+    "n_avg": 20,
+    "monitor": 1
+  },
+  "fresnel_applied_on_linux": true,
+  "fresnel_shift_distance_um": 1200,
+  "fresnel_center_xy_px": [
+    636,
+    512
+  ],
+  "calibration_applied_on_linux": true,
+  "calibration_bmp": "calibration/CAL_LSH0905549_1013nm.bmp",
+  "LUT": 207,
+  "beam_center_um": [
+    0,
+    0
+  ],
+  "target": "light_sheet_1d",
+  "sheet_flat_width_px": 45,
+  "sheet_flat_width_um_focal": 178.07,
+  "sheet_gaussian_sigma_px_logged_only": 4.0,
+  "sheet_edge_sigma_px": 0.0,
+  "target_shift_fpx": 80,
+  "cgm_max_iterations": 4000,
+  "cgm_steepness": 9,
+  "cgm_eta_steepness": 8,
+  "cgm_setting_eta": 0.1,
+  "init_phase_method": "stationary_phase_sheet_1d",
+  "cgm_wall_time_s": 12.435,
+  "cgm_per_iter_ms": 3.1088,
+  "cgm_device": "cuda",
+  "final_fidelity_1d": 0.99296,
+  "final_efficiency_1d": 0.182346,
+  "natural_perp_sigma_um": 11.7254,
+  "target_perp_sigma_um": 15.8281,
+  "timestamp_local": "2026-04-20T11:38:40"
+}

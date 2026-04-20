@@ -60,11 +60,11 @@ def main():
     etime_us           = int(os.environ.get("SLM_ETIME_US", 1500))
     n_avg              = int(os.environ.get("SLM_N_AVG", 20))
     LUT                = 207
-    fresnel_sd         = int(os.environ.get("SLM_FRESNEL_SD", 1200))
+    fresnel_sd         = int(os.environ.get("SLM_FRESNEL_SD", 1000))
 
-    sheet_flat_width     = int(os.environ.get("SLM_FLAT_WIDTH", 25))
-    sheet_gaussian_sigma = float(os.environ.get("SLM_GAUSS_SIGMA", 4))
-    sheet_edge_sigma     = float(os.environ.get("SLM_EDGE_SIGMA", 0))
+    sheet_flat_width     = int(os.environ.get("SLM_FLAT_WIDTH", 40))
+    sheet_gaussian_sigma = float(os.environ.get("SLM_GAUSS_SIGMA", 3))
+    sheet_edge_sigma     = float(os.environ.get("SLM_EDGE_SIGMA", 5))
     sheet_angle          = 0
     # Target is shifted diagonally from the zero-order so the first-order
     # does not overlap with the undiffracted beam at grid centre.

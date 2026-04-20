@@ -1,0 +1,102 @@
+[
+  {
+    "sd": 500,
+    "fit_rms": 1.5212386814358259,
+    "fit_ppk": 7.186024239622196,
+    "core_rms": 3.94,
+    "core_ppk": 15.66,
+    "core_mean": 144.7,
+    "core_width_um": 196.1,
+    "fit_flat_um": 125.8
+  },
+  {
+    "sd": 611,
+    "fit_rms": 1.5581093574153257,
+    "fit_ppk": 7.199686970131746,
+    "core_rms": 3.93,
+    "core_ppk": 15.45,
+    "core_mean": 144.6,
+    "core_width_um": 196.1,
+    "fit_flat_um": 127.65
+  },
+  {
+    "sd": 722,
+    "fit_rms": 1.5036898708141768,
+    "fit_ppk": 7.3583416274839495,
+    "core_rms": 4.19,
+    "core_ppk": 15.36,
+    "core_mean": 141.1,
+    "core_width_um": 196.1,
+    "fit_flat_um": 123.95
+  },
+  {
+    "sd": 833,
+    "fit_rms": 1.460166375175471,
+    "fit_ppk": 6.728786093105495,
+    "core_rms": 4.48,
+    "core_ppk": 14.59,
+    "core_mean": 139.4,
+    "core_width_um": 190.6,
+    "fit_flat_um": 116.55
+  },
+  {
+    "sd": 944,
+    "fit_rms": 1.3838408638122068,
+    "fit_ppk": 6.299066804917791,
+    "core_rms": 4.5,
+    "core_ppk": 14.91,
+    "core_mean": 138.6,
+    "core_width_um": 190.6,
+    "fit_flat_um": 116.55
+  },
+  {
+    "sd": 1056,
+    "fit_rms": 1.3814697663635562,
+    "fit_ppk": 5.81003073693681,
+    "core_rms": 4.57,
+    "core_ppk": 15.34,
+    "core_mean": 139.1,
+    "core_width_um": 190.6,
+    "fit_flat_um": 114.7
+  },
+  {
+    "sd": 1167,
+    "fit_rms": 1.4675447785093776,
+    "fit_ppk": 6.419122068550818,
+    "core_rms": 4.43,
+    "core_ppk": 14.86,
+    "core_mean": 141.3,
+    "core_width_um": 183.2,
+    "fit_flat_um": 112.85
+  },
+  {
+    "sd": 1278,
+    "fit_rms": 1.5326017228119624,
+    "fit_ppk": 6.142084654111504,
+    "core_rms": 4.69,
+    "core_ppk": 15.94,
+    "core_mean": 142.2,
+    "core_width_um": 186.9,
+    "fit_flat_um": 112.85
+  },
+  {
+    "sd": 1389,
+    "fit_rms": 1.2540973784369975,
+    "fit_ppk": 5.357516567840948,
+    "core_rms": 4.38,
+    "core_ppk": 15.38,
+    "core_mean": 145.2,
+    "core_width_um": 190.6,
+    "fit_flat_um": 118.4
+  },
+  {
+    "sd": 1500,
+    "fit_rms": 1.3680377741958576,
+    "fit_ppk": 5.665945307889042,
+    "core_rms": 4.26,
+    "core_ppk": 15.3,
+    "core_mean": 154.7,
+    "core_width_um": 186.9,
+    "fit_flat_um": 118.4
+  }
+]

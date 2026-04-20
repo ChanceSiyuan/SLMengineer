@@ -826,6 +826,50 @@ class SLM_class():  #用于生成输入输出振幅分布
             perp_target_w_um=perp_target_w_um,
         )
 
+    def stationary_phase_sheet_1d(self, flat_width, center=None):
+        """1D along-x stationary-phase seed for the 1D CGM path (issue #21).
+
+        Thin wrapper: calls the shared 1D physics in
+        :func:`slm.initial_phase.stationary_phase_light_sheet` with a
+        degenerate ``(1, nx)`` grid and returns the single row, so no
+        along-x math is duplicated.  ``angle=0`` is implicit (the 1D
+        decomposition only makes sense for the x-axis).
+
+        Parameters
+        ----------
+        flat_width : float
+            Along-line top-hat width in focal-plane pixels (same units as
+            :meth:`stationary_phase_sheet` and :meth:`light_sheet_target`).
+        center : float | None
+            Focal-plane column (px) to centre the target at, or ``None``
+            for the grid centre.
+
+        Returns
+        -------
+        1D float64 array of length ``self.ImgResX``, suitable as
+        ``initSLMPhase`` to :func:`slm.cgm.CGM_phase_generate_1d`.
+        """
+        from slm.initial_phase import stationary_phase_light_sheet
+
+        nx = int(self.ImgResX)
+        if center is None:
+            center_um = (0.0, 0.0)
+        else:
+            center_um = ((float(center) - (nx - 1) / 2.0) * float(self.Focalpitchx), 0.0)
+        result_2d = stationary_phase_light_sheet(
+            (1, nx),
+            flat_width_um=float(flat_width) * float(self.Focalpitchx),
+            w0_um=float(self.beamwaist),
+            wavelength_um=float(self.wavelength),
+            focal_length_um=float(self.focallength) / float(self.magnification),
+            pixel_pitch_um=float(self.pixelpitch),
+            angle=0.0,
+            center_um=center_um,
+            beam_center_um=tuple(getattr(self, "beam_center_um", (0.0, 0.0))),
+            perp_target_w_um=None,
+        )
+        return np.asarray(result_2d[0, :], dtype=np.float64)
+
     def lg_mode_target(self, ell, p, w0, center=None):
         """CGM-only: Laguerre-Gaussian mode LG^p_ell with vortex phase."""
         from slm.targets import lg_mode
