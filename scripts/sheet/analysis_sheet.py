@@ -125,8 +125,19 @@ def _fit_flat_top(profile: np.ndarray) -> tuple[float, float]:
 
 
 def analyze(after_path, plot_path=None, result_path=None,
-            cam_pitch_um: float = CAM_PITCH_UM_DEFAULT) -> dict:
+            cam_pitch_um: float = CAM_PITCH_UM_DEFAULT,
+            before_path=None) -> dict:
     after = _load_bmp(after_path)
+    dark_corrected = False
+    if before_path is not None and Path(before_path).is_file():
+        # Dark/flat-field correction: SLM-blank "before" frame carries the
+        # camera's column FPN + dark offset at the same exposure.  Subtracting
+        # it from the "after" frame kills the 1-px-period sawtooth that the
+        # IMX226's column amplifiers imprint on every row.
+        before = _load_bmp(before_path)
+        if before.shape == after.shape:
+            after = np.clip(after - before, 0.0, None)
+            dark_corrected = True
     (y0, y1, x0, x1), major_is_y = _detect_sheet_bbox(after)
     roi = after[y0:y1, x0:x1]
     ny, nx = roi.shape
@@ -224,6 +235,8 @@ def analyze(after_path, plot_path=None, result_path=None,
 
     result = {
         "after_path": str(after_path),
+        "before_path": str(before_path) if before_path is not None else None,
+        "dark_corrected": dark_corrected,
         "cam_pitch_um": cam_pitch_um,
         "roi_bbox_y0y1x0x1": [int(y0), int(y1), int(x0), int(x1)],
         "roi_shape_yx": [int(ny), int(nx)],
@@ -251,7 +264,8 @@ def analyze(after_path, plot_path=None, result_path=None,
 
     print(f"[ROI]  bbox=({y0},{y1},{x0},{x1}) shape=({ny},{nx}) "
           f"major_is_y={major_is_y}  "
-          f"({H_um:.1f} × {W_um:.1f} µm @ {cam_pitch_um:.2f} µm/px)")
+          f"({H_um:.1f} × {W_um:.1f} µm @ {cam_pitch_um:.2f} µm/px)"
+          f"{'  [dark-corrected]' if dark_corrected else ''}")
     print(f"[FIT]  center={center_px:.2f}px  half_width={half_width_px:.2f}px")
     print(f"[FLAT] [{a},{b})  width={b-a}px "
           f"({(b-a)*cam_pitch_um:.1f} µm)  mean={mean_val:.1f}")
@@ -272,12 +286,19 @@ def main():
         help=f"Camera pixel pitch in µm (default {CAM_PITCH_UM_DEFAULT} — "
              "Alvium 1800 U-1240m, IMX226).",
     )
+    ap.add_argument(
+        "--before", default=None,
+        help="Optional SLM-blank BMP for dark-frame / column-FPN subtraction. "
+             "If set and same shape as --after, analysis runs on "
+             "clip(after - before, 0) instead of after alone.",
+    )
     args = ap.parse_args()
 
     if not Path(args.after).is_file():
         print(f"ERROR: {args.after} not found", file=sys.stderr)
         sys.exit(1)
-    analyze(args.after, args.plot, args.result, cam_pitch_um=args.cam_pitch_um)
+    analyze(args.after, args.plot, args.result,
+            cam_pitch_um=args.cam_pitch_um, before_path=args.before)
 
 
 if __name__ == "__main__":

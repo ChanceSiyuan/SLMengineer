@@ -180,12 +180,18 @@ elif [ -n "${ANALY_MODE}" ]; then
         "${USER}@${SERVER_IP}:${REMOTE_INCOMING_FS}/" > /dev/null
     REMOTE_ANALYSIS_WIN="${WIN_RUNNER_WIN}/incoming/${SUBDIR}/analysis_sheet.py"
     AFTER_WIN="${REMOTE_DATA_WIN}/${BASE}_after.bmp"
+    BEFORE_WIN="${REMOTE_DATA_WIN}/${BASE}_before.bmp"
     PLOT_WIN="${REMOTE_DATA_WIN}/${BASE}_analysis.png"
     RESULT_WIN="${REMOTE_DATA_WIN}/${BASE}_analysis.json"
+    # --before enables dark-frame subtraction (kills IMX226 column-FPN
+    # 1-px sawtooth).  The runner always captures a _before.bmp, so it is
+    # safe to pass unconditionally — analysis_sheet.py silently ignores a
+    # missing file.
     ${SSH_CMD} "cd /d C:\\Users\\Galileo\\SLMengineer && uv run python \
         \"${REMOTE_ANALYSIS_WIN}\" \
-        --after \"${AFTER_WIN}\" \
-        --plot  \"${PLOT_WIN}\" \
+        --after  \"${AFTER_WIN}\" \
+        --before \"${BEFORE_WIN}\" \
+        --plot   \"${PLOT_WIN}\" \
         --result \"${RESULT_WIN}\""
 
     echo "[5/5] Pulling analysis PNG + JSON + run.json into ${LOCAL_DATA_DIR}/ ..."
