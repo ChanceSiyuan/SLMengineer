@@ -1,21 +1,30 @@
 # API Reference
 
+The `slm` package intentionally re-exports nothing at the top level — scripts
+import from submodules directly:
+
+```python
+from slm.cgm import CGM_phase_generate, CGMConfig
+from slm.wgs import phase_fixed_wgs, WGS_phase_generate
+from slm.gs  import gs
+from slm.targets import rectangular_grid, top_hat, light_sheet, mask_from_target, measure_region
+from slm.metrics import uniformity, fidelity, efficiency
+from slm.propagation import fft_propagate, ifft_propagate
+from slm.generation import SLM_class
+from slm.initial_phase import stationary_phase_light_sheet
+```
+
 ## `slm.propagation`
 
 | Function | Description |
 |---|---|
 | `fft_propagate(field)` | SLM -> focal plane via ortho-normalized FFT (centered) |
 | `ifft_propagate(field)` | Focal -> SLM plane via ortho-normalized IFFT |
+| `sinc_envelope(shape, fill_factor)` | Per-pixel sinc envelope modelling finite SLM fill factor |
+| `zero_order_field(shape, amplitude, phase)` | Centre-only DC field (for zero-order diagnostics) |
+| `realistic_propagate(field, sinc_env)` | Forward propagation with a pre-multiplied sinc envelope |
+| `realistic_ifft_propagate(field, sinc_env)` | Adjoint of `realistic_propagate` |
 | `pad_field(field, target_shape)` | Zero-pad for increased focal resolution |
-
-## `slm.beams`
-
-| Function | Description |
-|---|---|
-| `gaussian_beam(shape, sigma, center, normalize)` | 2D Gaussian amplitude profile |
-| `uniform_beam(shape)` | Uniform amplitude (normalized) |
-| `random_phase(shape, rng)` | Random phasor exp(i*phase) |
-| `initial_slm_field(shape, sigma, rng)` | Gaussian amplitude + random phase (standard L_0) |
 
 ## `slm.targets`
 
@@ -34,6 +43,8 @@
 |---|---|
 | `top_hat(shape, radius, center)` | Circular flat-top target |
 | `gaussian_line(shape, length, width_sigma, angle, phase_gradient)` | 1D Gaussian line with optional phase ramp |
+| `light_sheet(shape, flat_width, gaussian_sigma, angle, edge_sigma, center)` | 2D light-sheet: along-line top-hat with Gaussian transverse envelope and optional soft edge taper |
+| `light_sheet_1d(length, flat_width, center, edge_sigma)` | 1D top-hat companion for the dimension-decomposed CGM path |
 | `lg_mode(shape, l, p, w0, center)` | Laguerre-Gaussian mode LG^p_l |
 | `gaussian_lattice(shape, positions, peak_sigma, phases, center)` | Sum of Gaussian peaks with per-site phases |
 | `square_lattice_vortex(shape, rows, cols, spacing, peak_sigma, l)` | Square grid + vortex phase |
@@ -47,6 +58,7 @@
 |---|---|
 | `mask_from_target(target, threshold)` | Binary mask from target field |
 | `measure_region(shape, target, margin)` | Dilated measure region for CGM |
+| `measure_region_1d(length, target, margin)` | 1D companion for the decomposed CGM path |
 
 ## `slm.metrics`
 
@@ -72,43 +84,52 @@
 |---|---|
 | `WGSConfig` | `n_iterations`, `uniformity_threshold`, `phase_fix_iteration` |
 | `WGSResult` | Extends GSResult: `weight_history`, `phase_fixed_at`, `spot_phase_history`, `spot_amplitude_history` |
-| `wgs(initial_field, target, mask, config, callback)` | Weighted GS with optional phase fixing |
-| `phase_fixed_wgs(initial_field, target, mask, ...)` | Convenience wrapper with phase fixing |
+| `wgs(initial_field, target, mask, config, callback)` | NumPy-based Weighted GS with optional phase fixing |
+| `phase_fixed_wgs(initial_field, target, mask, ...)` | NumPy convenience wrapper with phase fixing |
+| `WGS_phase_generate(initSLMAmp, initSLMPhase, targetAmp, Loop, threshold, Plot)` | PyTorch GPU-accelerated WGS; returns the SLM phase tensor. Used by every hardware script. |
+| `WGS3D_phase_generate(...)` | 3D variant for multi-layer target stacks |
+| `phase_to_screen(slm_phase)` | Quantise a wrapped phase to the uint8 SLM screen format |
+| `fresnel_lens_phase_generate(shift_distance, ...)` | Post-hoc Fresnel lens used to offset the beam from the zero-order |
 
 ## `slm.cgm`
 
-| Item | Description |
-|---|---|
-| `CGMConfig` | `max_iterations`, `steepness`, `convergence_threshold`, `R`, `D`, `theta`, `track_fidelity` |
-| `CGMResult` | `slm_phase`, `output_field`, `cost_history`, `fidelity_history`, final metrics |
-| `cgm(input_amplitude, target_field, measure_region, config, callback)` | Conjugate Gradient Minimization |
-
-## `slm.feedback`
+Torch-based conjugate gradient minimisation. Pass torch tensors in, receive a real
+float32 phase tensor out. See [`cgm_implementation.md`](cgm_implementation.md) for
+the full walkthrough.
 
 | Item | Description |
 |---|---|
-| `FeedbackConfig` | `n_correction_steps`, `inner_iterations`, `phase_fix_iteration`, `noise_level` |
-| `simulate_camera_measurement(focal_field, positions, noise_level)` | Noisy intensity measurement |
-| `adjust_target_weights(target, measured, positions)` | Adaptive weight correction |
-| `adaptive_feedback_loop(initial_field, target, mask, positions, config, ...)` | Full feedback loop |
+| `CGMConfig` | Dataclass: `max_iterations`, `steepness`, `convergence_threshold`, `R`, `D`, `theta`, `track_fidelity`, `efficiency_weight`, `eta_min`, `eta_steepness`, `initial_phase`, `fill_factor`, `device` |
+| `CGM_phase_generate(initSLMAmp, initSLMPhase, targetAmp, **kwargs)` | 2D entry point. Auto-selects CUDA; builds the measure region from the target via `measure_region(margin=5)`; returns the SLM phase as a real float32 torch tensor on the caller's device. |
+| `CGM_phase_generate_1d(initSLMAmp, initSLMPhase, targetAmp, **kwargs)` | 1D companion for separable light-sheet targets (issue #21). Same API with length-N tensors. |
 
-## `slm.transforms`
+## `slm.initial_phase`
 
-| Item | Description |
-|---|---|
-| `zernike(n, m, shape, radius)` | Zernike polynomial Z_n^m |
-| `zernike_from_noll(j, shape, radius)` | Zernike by Noll index |
-| `apply_zernike_correction(phase, coefficients)` | Add Zernike correction to hologram |
-| `anti_aliased_affine_transform(phase, rotation, stretch, sigma)` | Anti-aliased rotation/stretch |
-| `generate_aberration(shape, coefficients)` | Generate aberration phase for simulation |
-
-## `slm.visualization`
+Closed-form stationary-phase (geometric-optics) warm starts for CGM.
 
 | Function | Description |
 |---|---|
-| `plot_phase(phase, title, ax)` | Phase map with cyclic colormap |
-| `plot_intensity(field, title, ax, log_scale)` | Intensity map |
-| `plot_convergence(history, ylabel, title, ax)` | Convergence curve |
-| `plot_comparison(results, ylabel, title)` | Multi-algorithm comparison |
-| `plot_spot_histogram(intensities, title, ax)` | Spot intensity histogram |
-| `plot_hologram_summary(slm_phase, focal_field, target)` | Four-panel summary |
+| `stationary_phase_1d(x_um, b_um, w0_um, wavelength_um, focal_length_um)` | 1D closed-form phase mapping a Gaussian to a top-hat (see `references/Top Hat Beam.pdf`) |
+| `stationary_phase_light_sheet(shape, flat_width_um, w0_um, wavelength_um, focal_length_um, pixel_pitch_um, angle, center_um, beam_center_um, perp_target_w_um)` | 2D wrapper for light-sheet targets with optional cylindrical Fresnel lens perpendicular to the line |
+| `cylindrical_lens_for_gaussian_width(target_w_um, w0_um, wavelength_um, focal_length_um)` | Focal length of a cylindrical Fresnel lens that widens the natural focal Gaussian to a target width |
+
+## `slm.aberration`
+
+| Item | Description |
+|---|---|
+| `Zernike` | Zernike polynomial class (radial/azimuthal indices, evaluation, combination into aberration phase maps) |
+
+## `slm.generation`
+
+| Item | Description |
+|---|---|
+| `SLM_class` | Top-level wrapper around the physical SLM configuration: reads `hamamatsu_test_config.json`, builds the input Gaussian amplitude, computes focal-plane pitches, and exposes convenience constructors (`light_sheet_target`, `stationary_phase_sheet`, `phase_to_screen`, `fresnel_lens_phase_generate`). Used by every hardware script in `scripts/<pattern>/`. |
+
+## `slm.imgpy`
+
+Legacy utilities kept for hardware-side calibration and quantisation.
+
+| Function | Description |
+|---|---|
+| `SLM_screen_Correct(slm_screen, LUT, correctionImgPath)` | Apply LUT + calibration-BMP correction to an 8-bit SLM screen |
+| `camera_Amp_generate(init_target_amp, camera_intensity_array)` | Build an updated target amplitude from a camera frame for closed-loop feedback |

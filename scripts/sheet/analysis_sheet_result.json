@@ -1,5 +1,7 @@
 {
   "after_path": "data/sheet/testfile_sheet_after.bmp",
+  "before_path": null,
+  "dark_corrected": false,
   "cam_pitch_um": 1.85,
   "roi_bbox_y0y1x0x1": [
     1541,

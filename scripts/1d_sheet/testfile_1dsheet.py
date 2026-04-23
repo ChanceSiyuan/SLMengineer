@@ -58,9 +58,9 @@ def main():
     LUT                = 207
     fresnel_sd         = int(os.environ.get("SLM_FRESNEL_SD", 1200))
 
-    sheet_flat_width     = int(os.environ.get("SLM_FLAT_WIDTH", 36))
-    sheet_gaussian_sigma = float(os.environ.get("SLM_GAUSS_SIGMA", 4))
-    sheet_edge_sigma     = float(os.environ.get("SLM_EDGE_SIGMA", 3))
+    sheet_flat_width     = int(os.environ.get("SLM_FLAT_WIDTH", 40))
+    sheet_gaussian_sigma = float(os.environ.get("SLM_GAUSS_SIGMA", 3))
+    sheet_edge_sigma     = float(os.environ.get("SLM_EDGE_SIGMA", 5))
     target_shift_fpx     = int(os.environ.get("SLM_TARGET_SHIFT_FPX", 80))
 
     cgm_steepness      = int(os.environ.get("SLM_CGM_STEEPNESS", 9))

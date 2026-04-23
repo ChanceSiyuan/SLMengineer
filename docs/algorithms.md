@@ -56,6 +56,10 @@ Gradient-based optimization for continuous beam shaping (top-hat, LG modes).
 **Module:** `slm.cgm`
 **Reference:** Bowman et al., "Efficient generation of complex optical patterns with optimised holograms"
 
+> For the torch implementation details — analytic adjoint gradient, Polak–Ribière+ direction,
+> geometric-probe + golden-section line search, 1D dimension decomposition, stationary-phase
+> warm starts, the efficiency/floor penalty terms — see [`cgm_implementation.md`](cgm_implementation.md).
+
 ### Cost Function
 
 $$C = 10^d \left(1 - \sum_\Omega \sqrt{\tilde{I} \cdot \tilde{T}} \cos(\Phi - \varphi)\right)^2$$
@@ -77,6 +81,16 @@ where $\tilde{I}$ and $\tilde{T}$ are intensities normalized over the measure re
 - **Efficiency** $\eta$: fraction of power in target region
 - **Phase error** $\varepsilon_\Phi$: relative phase deviation with cyclic correction
 - **Non-uniformity** $\varepsilon_\nu$: intensity flatness error
+
+### 1D dimension decomposition
+
+When the target is separable along one axis (e.g. a light sheet whose long axis
+is aligned with a grid axis) and the input beam is separable Gaussian, the SLM
+phase only needs to vary along that axis. The y-envelope at the focal plane is
+then fixed by the natural 2F transform of the input Gaussian, and the 2D FFT
+per iteration collapses to a 1D FFT. This is the **1D CGM path**
+(`CGM_phase_generate_1d`), which is ~10× faster than the 2D path at equivalent
+compute-grid resolution. See [`cgm_implementation.md §11`](cgm_implementation.md#11-1d-dimension-decomposition-issue-21).
 
 ---
 
