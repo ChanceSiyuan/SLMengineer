@@ -127,7 +127,21 @@ def main():
     # Deferred import: analysis_sheet pulls matplotlib/scipy/PIL.  The
     # sibling copy lives next to this file in windows_runner\ — keep it in
     # sync manually (or via scp) when the Linux copy changes.
-    from analysis_sheet import analyze as _analyze_after
+    import sys
+    import os
+
+    # 1. 获取当前文件 (takeshot.py) 所在的目录: .../SLMengineer/windows_runner
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # 2. 获取项目的根目录 (即向上一级): .../SLMengineer
+    project_root = os.path.dirname(current_dir)
+
+    # 3. 将项目根目录强行插入到 Python 搜索路径的开头
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
+
+# 4. 现在 Python 就能从根目录找到 scripts 这个包了
+    from scripts.sheet.analysis_sheet import analyze as _analyze_after
 
     plot_path = out_dir / f"{prefix}_analysis.png"
     json_path = out_dir / f"{prefix}_analysis.json"
