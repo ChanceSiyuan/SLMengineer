@@ -126,7 +126,8 @@ def _fit_flat_top(profile: np.ndarray) -> tuple[float, float]:
 
 def analyze(after_path, plot_path=None, result_path=None,
             cam_pitch_um: float = CAM_PITCH_UM_DEFAULT,
-            before_path=None) -> dict:
+            before_path=None,
+            flat_a: int = None, flat_b: int = None) -> dict:
     after = _load_bmp(after_path)
     dark_corrected = False
     if before_path is not None and Path(before_path).is_file():
@@ -156,8 +157,12 @@ def analyze(after_path, plot_path=None, result_path=None,
         axis_label = "x (µm)"
 
     center_px, half_width_px = _fit_flat_top(profile)
-    a = max(int(round(center_px - half_width_px)), 0)
-    b = min(int(round(center_px + half_width_px)), len(profile))
+    if flat_a is not None and flat_b is not None:
+        a = round(max(flat_a/cam_pitch_um,0))
+        b = round(min(flat_b/cam_pitch_um, len(profile)))    
+    else:
+        a = max(int(round(center_px - half_width_px)), 0)
+        b = min(int(round(center_px + half_width_px)), len(profile))
     flat = profile[a:b] if b > a else profile
 
     mean_val = float(flat.mean()) if flat.size else 0.0
@@ -208,7 +213,7 @@ def analyze(after_path, plot_path=None, result_path=None,
                     label="Pk-Pk Range")
 
     ax_prof.text(
-        0.02, 0.96,
+        0.45, 0.15,
         f"RMS: {rms_pct:.4f}%\nPk-Pk: {ppk_pct:.4f}%",
         transform=ax_prof.transAxes,
         ha="left", va="top", color="red", fontsize=12, fontweight="bold",
@@ -292,13 +297,23 @@ def main():
              "If set and same shape as --after, analysis runs on "
              "clip(after - before, 0) instead of after alone.",
     )
+
+    ap.add_argument(
+        "--flat-a", type=int, default=50,
+        help="Manually select the start region index (mu m) for flat-top region counted for rms&pk-pk"
+    )
+    ap.add_argument(
+        "--flat-b", type=int, default=200,
+        help="Manually select the end region index (mu m) for flat-top region counted for rms&pk-pk"
+    )
     args = ap.parse_args()
 
     if not Path(args.after).is_file():
         print(f"ERROR: {args.after} not found", file=sys.stderr)
         sys.exit(1)
     analyze(args.after, args.plot, args.result,
-            cam_pitch_um=args.cam_pitch_um, before_path=args.before)
+            cam_pitch_um=args.cam_pitch_um, before_path=args.before,
+            flat_a=args.flat_a, flat_b=args.flat_b)
 
 
 if __name__ == "__main__":

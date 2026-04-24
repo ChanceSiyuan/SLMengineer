@@ -62,8 +62,8 @@ def main():
     LUT                = 207
     fresnel_sd         = int(os.environ.get("SLM_FRESNEL_SD", 1000))
 
-    sheet_flat_width     = int(os.environ.get("SLM_FLAT_WIDTH", 40))
-    sheet_gaussian_sigma = float(os.environ.get("SLM_GAUSS_SIGMA", 3))
+    sheet_flat_width     = int(os.environ.get("SLM_FLAT_WIDTH", 30))
+    sheet_gaussian_sigma = float(os.environ.get("SLM_GAUSS_SIGMA", 4))
     sheet_edge_sigma     = float(os.environ.get("SLM_EDGE_SIGMA", 5))
     sheet_angle          = 0
     # Target is shifted diagonally from the zero-order so the first-order

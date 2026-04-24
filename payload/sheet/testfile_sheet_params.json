@@ -32,7 +32,7 @@
   "target": "light_sheet",
   "sheet_flat_width_px": 40,
   "sheet_flat_width_um_focal": 158.28,
-  "sheet_gaussian_sigma_px": 3.0,
+  "sheet_gaussian_sigma_px": 2.0,
   "sheet_angle_rad": 0,
   "sheet_edge_sigma_px": 5.0,
   "cgm_max_iterations": 4000,
@@ -40,11 +40,11 @@
   "cgm_eta_steepness": 8,
   "cgm_setting_eta": 0.1,
   "init_phase_method": "stationary_phase_2d",
-  "cgm_wall_time_s": 108.117,
-  "cgm_per_iter_ms": 27.03,
+  "cgm_wall_time_s": 93.295,
+  "cgm_per_iter_ms": 23.32,
   "cgm_device": "cuda",
-  "final_fidelity": 0.999116,
-  "final_one_minus_fidelity": 0.0008839,
-  "final_efficiency": 0.159577,
-  "timestamp_local": "2026-04-24T15:32:26"
+  "final_fidelity": 0.999034,
+  "final_one_minus_fidelity": 0.0009662,
+  "final_efficiency": 0.168711,
+  "timestamp_local": "2026-04-24T18:48:47"
 }

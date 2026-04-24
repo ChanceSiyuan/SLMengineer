@@ -82,9 +82,8 @@ $LocalDataDir = "data/${Subdir}"
 $RunPrefix = "${SubdirBS}\${Base}"
 
 # --- 开始执行流程 ---
-
-Write-Host "[1/4] Ensuring remote ${RemoteIncomingBS}\ exists..."
-& $SshCmd -p $Port $Target "if not exist `"${RemoteIncomingBS}\`" mkdir `"${RemoteIncomingBS}`""
+Write-Host "[1/4] Ensuring remote ${RemoteIncomingBS} exists..."
+& $SshCmd -p $Port $Target "if not exist `"${RemoteIncomingBS}`" mkdir `"${RemoteIncomingBS}`""
 
 Write-Host "[2/4] Pushing payload..."
 & $ScpCmd -P $Port $Payload "${Target}:${RemoteIncomingFS}/"
