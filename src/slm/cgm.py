@@ -492,7 +492,8 @@ def CGM_phase_generate(
         plt.xlabel("Iteration")
         plt.ylabel("CGM cost")
         plt.title("CGM convergence")
-        plt.show()
+        plt.savefig("cgm_convergence.png", dpi=300)
+        plt.close()
         print(
             f"CGM: {n_iters} iter, F={f:.4f}, eta={e:.4f}"
         )

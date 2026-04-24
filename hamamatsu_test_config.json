@@ -22,5 +22,13 @@
     "ind_Zernike_list": [3,4,5],
     "percent_list": [-0.35,0.5,0.1],
     "zernike_aperture_radius": 6000,
-    "isZernikePhaseContinous": false
+    "isZernikePhaseContinous": false,
+
+    "windows_remote": {
+      "host": "199.7.140.178",
+      "port": 60022,
+      "user": "Galileo",
+      "remote_base": "C:/Users/Galileo/slm_runner",
+      "remote_repo": "C:/Users/Galileo/SLMengineer"
+    }
   }

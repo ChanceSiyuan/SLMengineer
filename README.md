@@ -27,6 +27,37 @@ The repo covers both ends of the workflow:
   Vimba camera via [`windows_runner/`](windows_runner/). The division exists so
   refactors on the compute side don't destabilise the lab.
 
+## Quickstart
+
+One-line workflow via the top-level [`./slm.sh`](slm.sh) dispatcher:
+
+```bash
+git clone https://github.com/ChanceSiyuan/SLMengineer.git
+cd SLMengineer
+uv sync --all-extras
+
+./slm.sh list                              # show shapes with a committed example
+./slm.sh example sheet                     # restore the bundled example into payload/sheet/
+./slm.sh push    sheet --png-analy         # push to the Windows SLM, pull analysis PNG+JSON
+```
+
+Every shape under [`examples/`](examples/) ships with a precomputed
+`example_<shape>_{payload.npz,params.json,preview.pdf}`, so first-time users can
+drive the SLM **without rerunning any CGM/WGS optimisation**.  Regenerate from
+scratch with `./slm.sh compute <shape>`; the output lands at
+`payload/<subdir>/testfile_<shape>_*`, keeping the committed examples untouched.
+
+On the Windows lab box itself (SLM + camera directly attached, no SSH needed):
+
+```
+windows_runner\slm_local.bat payload\sheet\testfile_sheet_payload.npz --png
+```
+
+The remote SSH endpoint is configured in
+[`hamamatsu_test_config.json`](hamamatsu_test_config.json) under the
+`windows_remote` block (host / port / user / remote path).  Edit that file to
+point `./slm.sh push …` at a different Windows box.
+
 ## Algorithms
 
 | Algorithm | Use case | Module | Reference |
@@ -181,11 +212,21 @@ For a walkthrough of what CGM is doing internally, see
 
 ## Hardware workflow
 
-Prerequisite: Windows lab box reachable over SSH on the port configured at the
-top of [`push_run.sh`](push_run.sh). The runner on the Windows side must
-already be set up per [`windows_runner/README.md`](windows_runner/README.md).
+Prerequisite: Windows lab box reachable over SSH at the host/port/user
+configured in the `windows_remote` block of
+[`hamamatsu_test_config.json`](hamamatsu_test_config.json).  The runner on the
+Windows side must already be set up per
+[`windows_runner/README.md`](windows_runner/README.md).
 
-End-to-end light-sheet example:
+End-to-end light-sheet example — either via the [`./slm.sh`](slm.sh) dispatcher
+(recommended):
+
+```bash
+./slm.sh compute sheet                     # or: ./slm.sh example sheet
+./slm.sh push    sheet --png-analy
+```
+
+or the equivalent lower-level invocation:
 
 ```bash
 # 1. Generate the payload locally (CGM on GPU if available)
@@ -200,6 +241,10 @@ uv run python scripts/sheet/testfile_sheet.py
 # ─ data/sheet/testfile_sheet_analysis.json        (uniformity / flat-top bounds / RMS)
 # ─ data/sheet/testfile_sheet_run.json             (exposure, frame count, timestamps)
 ```
+
+On the Windows box itself (direct-attached SLM + camera, no SSH), use
+[`windows_runner/slm_local.bat`](windows_runner/slm_local.bat) with the same
+mode flags — it mirrors `push_run.sh` but skips the push/pull.
 
 `push_run.sh` modes:
 

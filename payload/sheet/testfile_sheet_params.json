@@ -40,11 +40,11 @@
   "cgm_eta_steepness": 8,
   "cgm_setting_eta": 0.1,
   "init_phase_method": "stationary_phase_2d",
-  "cgm_wall_time_s": 203.048,
-  "cgm_per_iter_ms": 50.76,
+  "cgm_wall_time_s": 203.556,
+  "cgm_per_iter_ms": 50.89,
   "cgm_device": "cuda",
   "final_fidelity": 0.999104,
   "final_one_minus_fidelity": 0.0008959,
   "final_efficiency": 0.159564,
-  "timestamp_local": "2026-04-21T11:03:47"
+  "timestamp_local": "2026-04-24T04:54:17"
 }

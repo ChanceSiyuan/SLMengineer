@@ -134,11 +134,6 @@ def main():
     )
 
     # --- 4. Seed + bounded CGM polish ---
-    # Empirically (issue #20 phase-3): 5 iterations of CGM polish on top of
-    # the corrected seed gives a clean continuous light sheet (continuity
-    # 0.97, aspect 4.3 on camera).  Running CGM to convergence always pulls
-    # the output into a 2-4 bright spot chain — the ''better'' minimum for
-    # peak-correlation fidelity but not what a microscopy user wants.
     t0 = time.perf_counter()
     if cgm_max_iterations > 0:
         cgm_device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -242,11 +237,11 @@ def main():
     print(f"[SAVE] params:  {PARAMS_PATH}")
 
     # --- 10. Save preview.pdf ---
-    _save_preview(
-        SLM.initGaussianAmp, targetAmp, E_out_1024, region_np,
-        SLM_screen_final, F, eta,
-    )
-    print(f"[SAVE] preview: {PREVIEW_PATH}")
+    # _save_preview(
+    #     SLM.initGaussianAmp, targetAmp, E_out_1024, region_np,
+    #     SLM_screen_final, F, eta,
+    # )
+    # print(f"[SAVE] preview: {PREVIEW_PATH}")
 
     # --- 11. Next-step hint ---
     print()

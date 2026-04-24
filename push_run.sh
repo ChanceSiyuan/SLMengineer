@@ -72,13 +72,28 @@ PARAMS="$(dirname "${PAYLOAD}")/${BASE}_params.json"
 # Local slash form -> Windows backslash form
 SUBDIR_BS="${SUBDIR//\//\\}"
 
-SERVER_IP="199.7.140.178"
-PORT="60022"
-USER="Galileo"
-WIN_RUNNER_FS="/C:/Users/Galileo/slm_runner"
-WIN_RUNNER_BS="C:\\Users\\Galileo\\slm_runner"
-WIN_RUNNER_WIN="C:/Users/Galileo/slm_runner"
-SSH_CMD="ssh -p ${PORT} ${USER}@${SERVER_IP}"
+# SSH config is read from hamamatsu_test_config.json ("windows_remote" block).
+# Missing file / missing block / bad JSON -> fall back to the original hardcoded
+# lab defaults so existing deployments keep working unchanged.
+read SERVER_IP PORT SSH_USER REMOTE_BASE REMOTE_REPO < <(python3 -c "
+import json
+try:
+    c = json.load(open('hamamatsu_test_config.json')).get('windows_remote', {})
+except Exception:
+    c = {}
+print(
+    c.get('host',        '199.7.140.178'),
+    c.get('port',        60022),
+    c.get('user',        'Galileo'),
+    c.get('remote_base', 'C:/Users/Galileo/slm_runner'),
+    c.get('remote_repo', 'C:/Users/Galileo/SLMengineer'),
+)
+")
+WIN_RUNNER_FS="/${REMOTE_BASE}"             # /C:/Users/Galileo/slm_runner  (for scp)
+WIN_RUNNER_WIN="${REMOTE_BASE}"             # C:/Users/Galileo/slm_runner   (forward slash)
+WIN_RUNNER_BS="${REMOTE_BASE//\//\\}"       # C:\Users\Galileo\slm_runner   (backslash)
+REMOTE_REPO_BS="${REMOTE_REPO//\//\\}"      # C:\Users\Galileo\SLMengineer
+SSH_CMD="ssh -p ${PORT} ${SSH_USER}@${SERVER_IP}"
 SCP_CMD="scp -P ${PORT}"
 
 REMOTE_INCOMING_BS="${WIN_RUNNER_BS}\\incoming\\${SUBDIR_BS}"
@@ -94,9 +109,9 @@ echo "[1/4] Ensuring remote ${REMOTE_INCOMING_BS}\\ exists..."
 ${SSH_CMD} "if not exist \"${REMOTE_INCOMING_BS}\\\" mkdir \"${REMOTE_INCOMING_BS}\""
 
 echo "[2/4] Pushing payload..."
-${SCP_CMD} "${PAYLOAD}" "${USER}@${SERVER_IP}:${REMOTE_INCOMING_FS}/"
+${SCP_CMD} "${PAYLOAD}" "${SSH_USER}@${SERVER_IP}:${REMOTE_INCOMING_FS}/"
 if [ -f "${PARAMS}" ]; then
-    ${SCP_CMD} "${PARAMS}" "${USER}@${SERVER_IP}:${REMOTE_INCOMING_FS}/"
+    ${SCP_CMD} "${PARAMS}" "${SSH_USER}@${SERVER_IP}:${REMOTE_INCOMING_FS}/"
     echo "  pushed ${FILENAME} + $(basename "${PARAMS}")"
 else
     echo "  pushed ${FILENAME} (no params.json sibling)"
@@ -128,7 +143,7 @@ fi
 
 if [ -n "${PNG_MODE}" ]; then
     echo "[4/5] Rendering BMP→color-heatmap PNG on Windows..."
-    ${SSH_CMD} "cd /d C:\\Users\\Galileo\\SLMengineer && uv run python - \"${REMOTE_DATA_WIN}\" \"${BASE}\"" <<'PY'
+    ${SSH_CMD} "cd /d ${REMOTE_REPO_BS} && uv run python - \"${REMOTE_DATA_WIN}\" \"${BASE}\"" <<'PY'
 import os
 import sys
 import numpy as np
@@ -177,7 +192,7 @@ PY
 elif [ -n "${ANALY_MODE}" ]; then
     echo "[4/5] Uploading analysis_sheet.py and running it on Windows..."
     ${SCP_CMD} scripts/sheet/analysis_sheet.py \
-        "${USER}@${SERVER_IP}:${REMOTE_INCOMING_FS}/" > /dev/null
+        "${SSH_USER}@${SERVER_IP}:${REMOTE_INCOMING_FS}/" > /dev/null
     REMOTE_ANALYSIS_WIN="${WIN_RUNNER_WIN}/incoming/${SUBDIR}/analysis_sheet.py"
     AFTER_WIN="${REMOTE_DATA_WIN}/${BASE}_after.bmp"
     BEFORE_WIN="${REMOTE_DATA_WIN}/${BASE}_before.bmp"
@@ -187,7 +202,7 @@ elif [ -n "${ANALY_MODE}" ]; then
     # 1-px sawtooth).  The runner always captures a _before.bmp, so it is
     # safe to pass unconditionally — analysis_sheet.py silently ignores a
     # missing file.
-    ${SSH_CMD} "cd /d C:\\Users\\Galileo\\SLMengineer && uv run python \
+    ${SSH_CMD} "cd /d ${REMOTE_REPO_BS} && uv run python \
         \"${REMOTE_ANALYSIS_WIN}\" \
         --after  \"${AFTER_WIN}\" \
         --before \"${BEFORE_WIN}\" \
@@ -213,7 +228,7 @@ fi
 
 PULL_OK=1
 for f in "${PULL_FILES[@]}"; do
-    if ${SCP_CMD} "${USER}@${SERVER_IP}:${REMOTE_DATA_FS}/${f}" "${LOCAL_DATA_DIR}/" 2>/dev/null; then
+    if ${SCP_CMD} "${SSH_USER}@${SERVER_IP}:${REMOTE_DATA_FS}/${f}" "${LOCAL_DATA_DIR}/" 2>/dev/null; then
         echo "  ${LOCAL_DATA_DIR}/${f}"
     else
         echo "  MISSING: ${f}"
