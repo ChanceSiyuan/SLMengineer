@@ -49,7 +49,7 @@ BEAM_CENTER_DX_UM = int(os.environ.get("SLM_BCM_DX_UM", 0))   # closed-loop over
 BEAM_CENTER_DY_UM = int(os.environ.get("SLM_BCM_DY_UM", 0))      # closed-loop overridable
 
 
-def main():
+def main(reweight: np.ndarray | None = None) -> dict:
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     # All knobs exposed as env vars so param_sweep.sh / closed_loop_sheet.py
@@ -112,6 +112,7 @@ def main():
         angle=sheet_angle,
         edge_sigma=sheet_edge_sigma,
         center=target_center,
+        reweight=reweight,
     )
     shift_um = target_shift_fpx * SLM.Focalpitchx
     print(
@@ -251,6 +252,15 @@ def main():
     print(f"    ./push_run.sh {PAYLOAD_PATH}")
     print()
     print("=" * 72)
+
+    return {
+        "payload_path": PAYLOAD_PATH,
+        "params_path": PARAMS_PATH,
+        "fidelity": float(F),
+        "efficiency": float(eta),
+        "sheet_flat_width_px": int(sheet_flat_width),
+        "reweight_applied": None if reweight is None else np.asarray(reweight).tolist(),
+    }
 
 
 def _save_preview(input_amp, target, E_out, region, slm_screen_final, F, eta):

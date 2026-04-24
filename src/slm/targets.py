@@ -170,6 +170,7 @@ def light_sheet(
     angle: float = 0.0,
     center: tuple[float, float] | None = None,
     edge_sigma: float = 0.0,
+    reweight: np.ndarray | None = None,
 ) -> np.ndarray:
     """1D top-hat (light sheet): flat along one axis, Gaussian perpendicular.
 
@@ -187,6 +188,12 @@ def light_sheet(
     center : pattern center (row, col); defaults to grid center.
     edge_sigma : if > 0, apply Gaussian taper at ends of the flat region
         instead of a hard cutoff.  The taper has this 1/e^2 width.
+    reweight : optional 1D vector modulating the flat region amplitude
+        (issue #23).  Length can differ from the flat region's pixel
+        count; linear interpolation maps vector index to along-line
+        position.  ``None`` or all-ones leaves the sheet uniform.  Only
+        the nominal flat region (|u| <= flat_width/2) is modulated;
+        any edge_sigma taper tails are left untouched.
     """
     ny, nx = shape
     if center is None:
@@ -209,6 +216,17 @@ def light_sheet(
         along = np.exp(-(dist_outside**2) / (2.0 * edge_sigma**2))
     else:
         along = (np.abs(u) <= half).astype(np.float64)
+
+    if reweight is not None:
+        rw = np.asarray(reweight, dtype=np.float64).ravel()
+        if rw.size >= 2:
+            idx_f = np.clip((u + half) / (2.0 * half), 0.0, 1.0) * (rw.size - 1)
+            idx_lo = np.clip(np.floor(idx_f).astype(int), 0, rw.size - 1)
+            idx_hi = np.minimum(idx_lo + 1, rw.size - 1)
+            frac = idx_f - idx_lo
+            weight_map = (1.0 - frac) * rw[idx_lo] + frac * rw[idx_hi]
+            in_flat = np.abs(u) <= half
+            along = np.where(in_flat, along * weight_map, along)
 
     field = (along * perp).astype(np.complex128)
     power = np.sum(np.abs(field) ** 2)

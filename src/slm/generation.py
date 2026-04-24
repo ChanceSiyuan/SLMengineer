@@ -749,6 +749,7 @@ class SLM_class():  #用于生成输入输出振幅分布
 
     def light_sheet_target(
         self, flat_width, gaussian_sigma, angle=0.0, center=None, edge_sigma=0.0,
+        reweight=None,
     ):
         """CGM-only: 1D top-hat (Rydberg light sheet) with Gaussian perpendicular."""
         from slm.targets import light_sheet
@@ -759,6 +760,7 @@ class SLM_class():  #用于生成输入输出振幅分布
             angle=angle,
             center=center,
             edge_sigma=edge_sigma,
+            reweight=reweight,
         )
 
     def stationary_phase_sheet(
