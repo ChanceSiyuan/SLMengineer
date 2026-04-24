@@ -18,7 +18,7 @@ The script is self-contained: hardware wrappers live in sibling files
 (``vimba_camera.py``) and the analysis helper is imported from the main
 SLMengineer repo.  Deploy this file together with
 ``runner.py`` / ``slm_display.py`` / ``vimba_camera.py`` to
-``C:\\Users\\Galileo\\slm_runner\\``.
+``C:\\Users\\Galileo\\SLMengineer\\windows_runner\\``.
 
 Usage::
 
@@ -125,7 +125,7 @@ def main():
         return
 
     # Deferred import: analysis_sheet pulls matplotlib/scipy/PIL.  The
-    # sibling copy lives next to this file in slm_runner\ — keep it in
+    # sibling copy lives next to this file in windows_runner\ — keep it in
     # sync manually (or via scp) when the Linux copy changes.
     from analysis_sheet import analyze as _analyze_after
 

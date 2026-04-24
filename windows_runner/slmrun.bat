@@ -1,5 +1,6 @@
 @echo off
-:: slmrun.bat (inside C:\Users\Galileo\slm_runner\)
+:: slmrun.bat (lives in the windows_runner\ folder of the SLMengineer repo,
+:: canonically C:\Users\Galileo\SLMengineer\windows_runner\).
 ::
 :: Session-1 bridge for runner.py.  Takes the runner.py CLI args,
 :: schedules a one-off task via schtasks (which runs in the user's
@@ -7,12 +8,15 @@
 :: for the done.flag, and prints the runner's output.
 ::
 :: Usage (invoked from ssh):
-::   cd /d C:\Users\Galileo\slm_runner
+::   cd /d C:\Users\Galileo\SLMengineer\windows_runner
 ::   slmrun.bat --payload incoming\testfile_lg_payload.npz --output-prefix testfile_lg
 ::
 :: All args after "slmrun.bat" are forwarded to runner.py.
 
-set "DIR=C:\Users\Galileo\slm_runner"
+:: DIR = the folder this .bat lives in (location-agnostic).  %~dp0 has a
+:: trailing backslash; strip it so path joins like %DIR%\foo stay clean.
+set "DIR=%~dp0"
+set "DIR=%DIR:~0,-1%"
 set "ARGS_FILE=%DIR%\_runner_args.txt"
 set "DONE_FLAG=%DIR%\_runner_done.flag"
 set "OUT_FILE=%DIR%\_runner_output.txt"

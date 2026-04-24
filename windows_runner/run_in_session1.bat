@@ -1,5 +1,7 @@
 @echo off
-:: run_in_session1.bat (inside C:\Users\Galileo\slm_runner\)
+:: run_in_session1.bat (lives in the windows_runner\ folder of the
+:: SLMengineer repo, canonically
+:: C:\Users\Galileo\SLMengineer\windows_runner\).
 ::
 :: Invoked by the schtasks task created in slmrun.bat.  Runs in the
 :: user's interactive session, where the SLM display is accessible.
@@ -8,7 +10,9 @@
 :: them, writes stdout/stderr to _runner_output.txt, and creates
 :: _runner_done.flag to signal completion back to slmrun.bat.
 
-set "DIR=C:\Users\Galileo\slm_runner"
+:: DIR = the folder this .bat lives in (location-agnostic).
+set "DIR=%~dp0"
+set "DIR=%DIR:~0,-1%"
 set "MAIN_PYTHON=C:\Users\Galileo\SLMengineer\.venv\Scripts\python.exe"
 set "ARGS_FILE=%DIR%\_runner_args.txt"
 set "OUT_FILE=%DIR%\_runner_output.txt"

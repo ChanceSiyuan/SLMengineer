@@ -1,6 +1,6 @@
 # Windows hardware runner
 
-A lightweight, dedicated repo on the Windows lab box that does nothing
+A lightweight, dedicated folder on the Windows lab box that does nothing
 except load precomputed SLM phase payloads, display them on the SLM,
 capture the camera, and return the data to Linux.
 
@@ -9,13 +9,25 @@ Windows runner is a pure hardware-I/O layer.
 
 ## Intended layout (on Windows)
 
+The runner lives **inside the SLMengineer repo checkout** — there is no
+separate standalone directory to maintain. After `git pull` on the
+Windows box, the tree looks like:
+
 ```
-C:\Users\Galileo\slm_runner\
-├── runner.py         (copied from this template)
-├── incoming\         (Linux scp's payload .npz files here)
-├── data\             (runner writes before/after captures here)
-├── .venv\            (Python env; numpy/matplotlib/Pillow + SLM/camera deps)
-└── README.md         (this file)
+C:\Users\Galileo\SLMengineer\
+├── src\                  (Linux-shared source, imported by runner.py)
+├── .venv\                (Python env; numpy/matplotlib/Pillow + SLM/camera deps)
+├── hamamatsu_test_config.json
+└── windows_runner\
+    ├── runner.py         (hardware entry point)
+    ├── slmrun.bat        (SSH-invoked Session-1 bridge)
+    ├── run_in_session1.bat
+    ├── slm_display.py
+    ├── vimba_camera.py
+    ├── holdon.py / takeshot.py / render_png.py / gaussian_fit.py
+    ├── incoming\         (Linux scp's payload .npz files here) — gitignored
+    ├── data\             (runner writes before/after captures here) — gitignored
+    └── _runner_{args,done,output}.*   (Session-0/1 IPC; gitignored)
 ```
 
 The Linux-side orchestrator (`push_run.sh` at the SLMengineer repo
@@ -23,7 +35,7 @@ root) is the universal entry point. Given a local
 `payload/<sub>/<base>_payload.npz`, it:
 
 1. `scp`'s the payload (+ sibling params.json) into
-   `C:\Users\Galileo\slm_runner\incoming\<sub>\`,
+   `C:\Users\Galileo\SLMengineer\windows_runner\incoming\<sub>\`,
 2. `ssh`'s into the Windows box and runs `slmrun.bat --payload
    incoming\<sub>\<base>_payload.npz --output-prefix <sub>\<base>`,
 3. `scp`'s the captured `data\<sub>\<base>_{before,after}.bmp` +
@@ -34,29 +46,31 @@ The CGM/WGS compute itself runs earlier, locally, via
 
 ## One-time Windows setup
 
-### 1. Create the runner directory and subfolders
+### 1. Clone / sync the SLMengineer repo
 
 ```cmd
-mkdir C:\Users\Galileo\slm_runner
-mkdir C:\Users\Galileo\slm_runner\incoming
-mkdir C:\Users\Galileo\slm_runner\data
+cd C:\Users\Galileo
+git clone <repo-url> SLMengineer
 ```
 
-### 2. Copy `runner.py` into place
+(Or `git pull` if it is already there.) That single clone gives you the
+runner — no separate copy step.
 
-From the main SLMengineer repo (which should be cloned / synced to
-`C:\Users\Galileo\SLMengineer\`):
+### 2. Create `incoming\` and `data\` (first run only)
+
+`push_run.sh` creates these automatically via SSH, but if you want to
+run locally (`slm_local.bat`) before the first SSH run:
 
 ```cmd
-copy C:\Users\Galileo\SLMengineer\windows_runner\runner.py ^
-     C:\Users\Galileo\slm_runner\runner.py
+mkdir C:\Users\Galileo\SLMengineer\windows_runner\incoming
+mkdir C:\Users\Galileo\SLMengineer\windows_runner\data
 ```
 
 ### 3. Create the Python virtual environment
 
 The runner imports `slm.display.SLMdisplay` and `slm.camera.VimbaCamera`
-from the main SLMengineer repo's `src/slm/` package (the runner adds that
-path to `sys.path` automatically). So you need a venv with:
+from the repo's `src/slm/` package (the runner adds that path to
+`sys.path` automatically). So you need a venv with:
 
 - numpy
 - matplotlib
@@ -65,7 +79,7 @@ path to `sys.path` automatically). So you need a venv with:
 - The Allied Vision Vimba SDK Python bindings (for `slm.camera.VimbaCamera`)
 
 ```cmd
-cd C:\Users\Galileo\slm_runner
+cd C:\Users\Galileo\SLMengineer
 python -m venv .venv
 .venv\Scripts\activate
 pip install numpy matplotlib Pillow slmpy
@@ -75,31 +89,21 @@ pip install <path-to-vmbpy-wheel>
 deactivate
 ```
 
-If the main SLMengineer repo already has a working `.venv` with all
-these dependencies on the Windows box, you can skip the fresh venv and
-simply symlink or reuse that one:
-
-```cmd
-:: Option: reuse the main repo's venv
-mklink /D C:\Users\Galileo\slm_runner\.venv ^
-          C:\Users\Galileo\SLMengineer\.venv
-```
+`run_in_session1.bat` invokes the venv at
+`C:\Users\Galileo\SLMengineer\.venv\Scripts\python.exe` explicitly, so
+one repo-level venv covers everything.
 
 ### 4. Smoke test
 
-From the Windows command line:
-
 ```cmd
-cd C:\Users\Galileo\slm_runner
-.venv\Scripts\python.exe runner.py --help
+cd C:\Users\Galileo\SLMengineer\windows_runner
+..\.venv\Scripts\python.exe runner.py --help
 ```
 
 You should see the argparse help text listing `--payload`,
 `--output-prefix`, `--etime-us`, `--n-avg`, `--monitor`. If you get
-`ModuleNotFoundError: slm.display`, either the main SLMengineer repo
-isn't at `C:\Users\Galileo\SLMengineer\` or its `src/` layout has
-changed — check the `_MAIN_REPO_SRC` constant at the top of `runner.py`
-and adjust.
+`ModuleNotFoundError: slm.display`, the `src/` layout has changed —
+check `_MAIN_REPO_SRC` at the top of `runner.py`.
 
 ## Per-experiment workflow (from Linux)
 
@@ -147,11 +151,26 @@ the same (`.npz` with a `slm_screen` uint8 key of shape `(SLM_H, SLM_W)`).
 - **Camera timeout**: the Vimba camera may need to be power-cycled;
   also ensure no other process is holding it open.
 - **`ModuleNotFoundError: slm.display`**: the runner couldn't find
-  the main SLMengineer repo at `C:\Users\Galileo\SLMengineer\`. Edit
-  the `_MAIN_REPO_SRC` constant near the top of `runner.py`.
+  `src/slm/` under the repo root. Edit `_MAIN_REPO_SRC` near the top
+  of `runner.py`.
 - **Calibration correction looks wrong**: the correction is applied on
   the **Linux** side by `scripts/<shape>/testfile_<shape>.py` via
   `slm.imgpy.SLM_screen_Correct` using
   `calibration/CAL_LSH0905549_1013nm.bmp`. If you need to change the
   calibration file, edit the Linux script — the runner has no
   calibration logic at all.
+
+## Migrating from the old `C:\Users\Galileo\slm_runner\` layout
+
+Earlier versions kept the runtime workspace in a sibling folder
+`C:\Users\Galileo\slm_runner\`, hand-maintained by copying files out of
+this repo. The two have been merged — everything now lives inside
+`windows_runner\` in the repo. One-time migration on the Windows box:
+
+```cmd
+cd C:\Users\Galileo\SLMengineer && git pull
+robocopy C:\Users\Galileo\slm_runner\incoming C:\Users\Galileo\SLMengineer\windows_runner\incoming /E
+robocopy C:\Users\Galileo\slm_runner\data     C:\Users\Galileo\SLMengineer\windows_runner\data /E
+:: Confirm runs are working from the new location, then remove the old folder:
+rmdir /s /q C:\Users\Galileo\slm_runner
+```

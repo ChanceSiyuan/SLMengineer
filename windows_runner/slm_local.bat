@@ -2,10 +2,11 @@
 setlocal enabledelayedexpansion
 rem slm_local.bat -- Windows-local dispatcher for the SLM runner.
 rem Mirrors push_run.sh but skips ssh/scp: the payload is copied into
-rem <slm_runner>\incoming\<sub>\ on the same machine, slmrun.bat is
+rem <runner_base>\incoming\<sub>\ on the same machine, slmrun.bat is
 rem invoked locally, and BMP->PNG / analysis post-processing runs
-rem locally too.  Use this on the Windows lab box that has the SLM +
-rem camera physically attached.
+rem locally too.  <runner_base> defaults to the windows_runner\ folder
+rem of this repo (the .bat's own directory).  Use this on the Windows
+rem lab box that has the SLM + camera physically attached.
 rem
 rem Usage (from the repo root, e.g. C:\Users\Galileo\SLMengineer):
 rem   windows_runner\slm_local.bat <payload_file>                   (default: capture BMPs)
@@ -62,10 +63,13 @@ for /f "tokens=1 delims=\" %%S in ("%REL%") do set "SUBDIR=%%S"
 set "BASE=%FILENAME:_payload.npz=%"
 set "PARAMS=payload\%SUBDIR%\%BASE%_params.json"
 
-rem --- Read slm_runner base from hamamatsu_test_config.json (fallback to lab default) ---
-set "SLM_RUNNER=C:\Users\Galileo\slm_runner"
+rem --- Locate the runner base directory ---
+rem Default = this .bat's own folder (%~dp0 includes trailing backslash; strip it).
+rem Override via windows_remote.remote_base in hamamatsu_test_config.json if set.
+set "SLM_RUNNER=%~dp0"
+set "SLM_RUNNER=%SLM_RUNNER:~0,-1%"
 if exist hamamatsu_test_config.json (
-    for /f "usebackq delims=" %%V in (`python -c "import json; c=json.load(open('hamamatsu_test_config.json')).get('windows_remote',{}); print(c.get('remote_base','C:/Users/Galileo/slm_runner').replace('/', chr(92)))"`) do set "SLM_RUNNER=%%V"
+    for /f "usebackq delims=" %%V in (`python -c "import json; c=json.load(open('hamamatsu_test_config.json')).get('windows_remote',{}); b=c.get('remote_base',''); print(b.replace('/', chr(92))) if b else None"`) do set "SLM_RUNNER=%%V"
 )
 
 rem --- Read runner_defaults from params.json, if present ---
@@ -81,7 +85,7 @@ set "RUNNER_ARGS="
 if defined ETIME if not "!ETIME!"=="" set "RUNNER_ARGS=!RUNNER_ARGS! --etime-us !ETIME!"
 if defined NAVG  if not "!NAVG!"==""  set "RUNNER_ARGS=!RUNNER_ARGS! --n-avg !NAVG!"
 
-rem --- Stage payload into <slm_runner>\incoming\<sub>\ ---
+rem --- Stage payload into <runner_base>\incoming\<sub>\ ---
 set "INCOMING=%SLM_RUNNER%\incoming\%SUBDIR%"
 if not exist "%INCOMING%" mkdir "%INCOMING%"
 copy /y "%PAYLOAD%" "%INCOMING%\" >nul
@@ -137,6 +141,6 @@ echo Usage: windows_runner\slm_local.bat ^<payload_file^> [--hold-on ^| --png ^|
 echo.
 echo   ^<payload_file^> must live under payload\ (e.g. payload\sheet\testfile_sheet_payload.npz).
 echo   Run from the repo root.  Reads windows_remote.remote_base from
-echo   hamamatsu_test_config.json to locate slm_runner\ (falls back to
-echo   C:\Users\Galileo\slm_runner).
+echo   hamamatsu_test_config.json to locate the runner folder (falls back
+echo   to this .bat's own directory, i.e. windows_runner\).
 exit /b 1

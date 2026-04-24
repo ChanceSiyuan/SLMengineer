@@ -1,7 +1,7 @@
 """Hold a precomputed SLM screen on the SLM until Ctrl+C.
 
 Lives on the Windows lab box at:
-    C:\\Users\\Galileo\\slm_runner\\holdon.py
+    C:\\Users\\Galileo\\SLMengineer\\windows_runner\\holdon.py
 
 Accepts the same payload files the runner.py / push_run.sh pipeline
 produces:

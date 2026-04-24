@@ -10,9 +10,11 @@
 # payload/wgs_square/...).
 # Layout mirrors both ways:
 #   local  payload/<sub>/<base>_payload.npz
-#     ->   remote C:\...\slm_runner\incoming\<sub>\<base>_payload.npz
-#   remote C:\...\slm_runner\data\<sub>\<base>_{before,after}.bmp + _run.json
+#     ->   remote <remote_base>\incoming\<sub>\<base>_payload.npz
+#   remote <remote_base>\data\<sub>\<base>_{before,after}.bmp + _run.json
 #     ->   local  data/<sub>/<base>_{before,after}.bmp + _run.json
+# <remote_base> defaults to C:\Users\Galileo\SLMengineer\windows_runner
+# (the windows_runner\ folder of the SLMengineer repo on the lab box).
 #
 # Flags:
 #   --hold-on       Display payload on SLM and hold; no capture, no pull.
@@ -85,13 +87,13 @@ print(
     c.get('host',        '199.7.140.178'),
     c.get('port',        60022),
     c.get('user',        'Galileo'),
-    c.get('remote_base', 'C:/Users/Galileo/slm_runner'),
+    c.get('remote_base', 'C:/Users/Galileo/SLMengineer/windows_runner'),
     c.get('remote_repo', 'C:/Users/Galileo/SLMengineer'),
 )
 ")
-WIN_RUNNER_FS="/${REMOTE_BASE}"             # /C:/Users/Galileo/slm_runner  (for scp)
-WIN_RUNNER_WIN="${REMOTE_BASE}"             # C:/Users/Galileo/slm_runner   (forward slash)
-WIN_RUNNER_BS="${REMOTE_BASE//\//\\}"       # C:\Users\Galileo\slm_runner   (backslash)
+WIN_RUNNER_FS="/${REMOTE_BASE}"             # /C:/Users/.../windows_runner  (for scp)
+WIN_RUNNER_WIN="${REMOTE_BASE}"             # C:/Users/.../windows_runner   (forward slash)
+WIN_RUNNER_BS="${REMOTE_BASE//\//\\}"       # C:\Users\...\windows_runner   (backslash)
 REMOTE_REPO_BS="${REMOTE_REPO//\//\\}"      # C:\Users\Galileo\SLMengineer
 SSH_CMD="ssh -p ${PORT} ${SSH_USER}@${SERVER_IP}"
 SCP_CMD="scp -P ${PORT}"

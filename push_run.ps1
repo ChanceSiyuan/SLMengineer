@@ -62,7 +62,7 @@ if (Test-Path $ConfigFile) {
 $ServerIp   = if ($Config.host) { $Config.host } else { "192.168.50.35" }
 $Port       = if ($Config.port) { $Config.port } else { 22 }
 $SshUser    = if ($Config.user) { $Config.user } else { "Galileo" }
-$RemoteBase = if ($Config.remote_base) { $Config.remote_base } else { "C:/Users/Galileo/slm_runner" }
+$RemoteBase = if ($Config.remote_base) { $Config.remote_base } else { "C:/Users/Galileo/SLMengineer/windows_runner" }
 $RemoteRepo = if ($Config.remote_repo) { $Config.remote_repo } else { "C:/Users/Galileo/SLMengineer" }
 
 # 目标连接字符串

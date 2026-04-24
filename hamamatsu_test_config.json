@@ -28,7 +28,7 @@
       "host": "199.7.140.178",
       "port": 60022,
       "user": "Galileo",
-      "remote_base": "C:/Users/Galileo/slm_runner",
+      "remote_base": "C:/Users/Galileo/SLMengineer/windows_runner",
       "remote_repo": "C:/Users/Galileo/SLMengineer"
     },
 
@@ -36,7 +36,7 @@
       "host": "192.168.50.35",
       "port": 22,
       "user": "Galileo",
-      "remote_base": "C:/Users/Galileo/slm_runner",
+      "remote_base": "C:/Users/Galileo/SLMengineer/windows_runner",
       "remote_repo": "C:/Users/Galileo/SLMengineer"
     }
   }

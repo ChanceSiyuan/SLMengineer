@@ -1,6 +1,13 @@
 # Generated output images
 *.png
 /data
+
+# Runtime churn inside windows_runner/ on the Windows lab box
+windows_runner/incoming/
+windows_runner/data/
+windows_runner/_runner_args.txt
+windows_runner/_runner_output.txt
+windows_runner/_runner_done.flag
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

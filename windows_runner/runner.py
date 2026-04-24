@@ -2,7 +2,7 @@
 
 This script lives on the Windows lab box at::
 
-    C:\\Users\\Galileo\\slm_runner\\runner.py
+    C:\\Users\\Galileo\\SLMengineer\\windows_runner\\runner.py
 
 It is a minimal, **self-contained** hardware runner that knows how to:
 
@@ -60,11 +60,11 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-# Hardware wrappers live next to this file (deploy all three together
-# to C:\Users\Galileo\slm_runner\).  Keeping them here — rather than
-# importing from the main SLMengineer repo — makes the runner truly
-# self-contained, so the hardware box does not inherit Linux-side
-# refactors of src/slm/.
+# Hardware wrappers live next to this file inside
+# C:\Users\Galileo\SLMengineer\windows_runner\.  Keeping them here —
+# rather than importing from the main src/slm/ tree — means the runner
+# is self-contained inside windows_runner/, so it does not silently
+# inherit Linux-side refactors of src/slm/.
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _THIS_DIR not in sys.path:
     sys.path.insert(0, _THIS_DIR)
@@ -139,7 +139,7 @@ def main():
         help="After saving the BMPs, run the sibling analysis_sheet.py "
              "on the 'after' frame and save <prefix>_analysis.{png,json} "
              "alongside the BMPs.  Requires analysis_sheet.py to be "
-             "deployed next to this runner (C:\\Users\\Galileo\\slm_runner\\). "
+             "deployed next to this runner (C:\\Users\\Galileo\\SLMengineer\\windows_runner\\). "
              "Default: off.",
     )
     args = ap.parse_args()
@@ -255,7 +255,7 @@ def main():
     if args.analyze:
         # Deferred import: analysis_sheet pulls matplotlib/scipy, which the
         # pure-capture path does not need.  The sibling copy next to this
-        # file (slm_runner\analysis_sheet.py) is kept in sync manually.
+        # file (windows_runner\analysis_sheet.py) is kept in sync manually.
         from analysis_sheet import analyze as _analyze_after
         plot_path = out_dir / f"{prefix}_analysis.png"
         json_path = out_dir / f"{prefix}_analysis.json"
