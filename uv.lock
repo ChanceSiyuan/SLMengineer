@@ -1590,6 +1590,7 @@ dependencies = [
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "scipy" },
+    { name = "zernike" },
 ]
 
 [package.optional-dependencies]
@@ -1630,6 +1631,7 @@ requires-dist = [
     { name = "torch", marker = "extra == 'gpu'", specifier = ">=2.0" },
     { name = "vmbpy", marker = "extra == 'hardware'" },
     { name = "wxpython", marker = "extra == 'hardware'", specifier = ">=4.2" },
+    { name = "zernike", specifier = ">=0.0.33" },
     { name = "zernike", marker = "extra == 'hardware'" },
 ]
 provides-extras = ["app", "jax", "gpu", "hardware", "dev"]
