@@ -65,10 +65,10 @@ def load_image(path: Path) -> np.ndarray:
 
 def capture_bmp(out_bmp: Path, etime_us: int, n_avg: int) -> np.ndarray:
     """Grab ``n_avg`` averaged frames from the Vimba camera, save as BMP."""
-    _MAIN_REPO_SRC = r"C:\Users\Galileo\SLMengineer\src"
-    if os.path.isdir(_MAIN_REPO_SRC) and _MAIN_REPO_SRC not in sys.path:
-        sys.path.insert(0, _MAIN_REPO_SRC)
-    from slm.camera import VimbaCamera  # noqa: E402
+    _HERE = os.path.dirname(os.path.abspath(__file__))
+    if _HERE not in sys.path:
+        sys.path.insert(0, _HERE)
+    from vimba_camera import VimbaCamera  # noqa: E402
 
     print(f"[capture] {n_avg} frames @ {etime_us} us")
     acc = None
