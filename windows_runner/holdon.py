@@ -28,11 +28,11 @@ from pathlib import Path
 
 import numpy as np
 
-_MAIN_REPO_SRC = r"C:\Users\Galileo\SLMengineer\src"
-if os.path.isdir(_MAIN_REPO_SRC) and _MAIN_REPO_SRC not in sys.path:
-    sys.path.insert(0, _MAIN_REPO_SRC)
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
 
-from slm.display import SLMdisplay  # noqa: E402
+from slm_display import SLMdisplay  # noqa: E402  (wx-based, from slmpy)
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
