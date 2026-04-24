@@ -576,31 +576,3 @@ def measure_region_1d(
     struct = np.ones(2 * margin + 1, dtype=bool)
     dilated = binary_dilation(mask.astype(bool), structure=struct)
     return dilated.astype(np.float64)
-
-
-def _demo_target_gallery(
-    shape: tuple[int, int] = (256, 256),
-) -> dict[str, np.ndarray]:
-    """Build a small set of named targets for quick visualization."""
-    cy = (shape[0] - 1) / 2.0
-    cx = (shape[1] - 1) / 2.0
-    center = (cy, cx)
-    return {
-        "LG01": lg_mode(shape, ell=1, p=0, w0=10.0, center=center),
-        "top_hat": top_hat(shape, radius=25.0, center=center),
-        "gaussian_line": gaussian_line(
-            shape, length=30.0, width_sigma=5.0, phase_gradient=0.1, center=center
-        ),
-        "square_lattice_vortex": square_lattice_vortex(
-            shape, rows=8, cols=8, spacing=14.0, peak_sigma=3.0, ell=1, center=center
-        ),
-        "ring_lattice_vortex": ring_lattice_vortex(
-            shape, n_sites=12, ring_radius=25.0, peak_sigma=3.0, ell=1, center=center
-        ),
-        "graphene": graphene_lattice(
-            shape, rows=4, cols=4, spacing=8.0, peak_sigma=2.5, center=center
-        ),
-        "chicken_egg": chicken_egg_pattern(shape, radius=50.0, center=center),
-    }
-
-

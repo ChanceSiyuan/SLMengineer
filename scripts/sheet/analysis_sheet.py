@@ -127,7 +127,7 @@ def _fit_flat_top(profile: np.ndarray) -> tuple[float, float]:
 def analyze(after_path, plot_path=None, result_path=None,
             cam_pitch_um: float = CAM_PITCH_UM_DEFAULT,
             before_path=None,
-            flat_a: int = None, flat_b: int = None) -> dict:
+            flat_a: int = 50, flat_b: int = 200) -> dict:
     after = _load_bmp(after_path)
     dark_corrected = False
     if before_path is not None and Path(before_path).is_file():
