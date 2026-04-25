@@ -170,6 +170,20 @@ def analyze(after_path, plot_path=None, result_path=None,
     ppk_pct = (100.0 * float(flat.max() - flat.min()) / mean_val
                if mean_val > 0 else float("nan"))
 
+    # Observed efficiency: integrated intensity inside the 2D selected region
+    # (flat span [a, b] along the sheet's major axis × the full minor extent
+    # of the detected ROI) over the integrated intensity of the entire
+    # (dark-corrected) camera frame.  Captures "how much of the laser power
+    # is actually inside the part of the sheet we care about".
+    if major_is_y:
+        sel_region = roi[a:b, :] if b > a else roi
+    else:
+        sel_region = roi[:, a:b] if b > a else roi
+    sel_sum   = float(sel_region.sum())
+    total_sum = float(after.sum())
+    eff_obs   = sel_sum / total_sum if total_sum > 0 else float("nan")
+    eff_pct   = 100.0 * eff_obs
+
     W_um = nx * cam_pitch_um
     H_um = ny * cam_pitch_um
     lo_um = lo * cam_pitch_um
@@ -197,7 +211,9 @@ def analyze(after_path, plot_path=None, result_path=None,
     ax_img.legend(loc="upper right", fontsize=8, framealpha=0.8)
     ax_img.set_xlabel("x (µm)")
     ax_img.set_ylabel("y (µm)")
-    ax_img.set_title(f"RMS: {rms_pct:.2f}%, Pk-Pk: {ppk_pct:.2f}%")
+    ax_img.set_title(
+        f"RMS: {rms_pct:.2f}%, Pk-Pk: {ppk_pct:.2f}%, Eff: {eff_pct:.2f}%"
+    )
     fig.colorbar(im, ax=ax_img, fraction=0.035, pad=0.02)
 
     # Bottom: profile on the same µm scale as the top panel's along-sheet axis.
@@ -214,7 +230,7 @@ def analyze(after_path, plot_path=None, result_path=None,
 
     ax_prof.text(
         0.45, 0.15,
-        f"RMS: {rms_pct:.4f}%\nPk-Pk: {ppk_pct:.4f}%",
+        f"RMS: {rms_pct:.4f}%\nPk-Pk: {ppk_pct:.4f}%\nEff: {eff_pct:.4f}%",
         transform=ax_prof.transAxes,
         ha="left", va="top", color="red", fontsize=12, fontweight="bold",
         bbox=dict(boxstyle="round,pad=0.4", fc="white", ec="red", lw=1.2),
@@ -259,6 +275,9 @@ def analyze(after_path, plot_path=None, result_path=None,
         "flat_profile": [float(v) for v in flat],
         "rms_percent": rms_pct,
         "pk_pk_percent": ppk_pct,
+        "selected_region_intensity": sel_sum,
+        "total_camera_intensity": total_sum,
+        "efficiency_observed": eff_obs,
         "plot_path": str(plot_path),
     }
     if result_path is not None:
@@ -275,7 +294,7 @@ def analyze(after_path, plot_path=None, result_path=None,
     print(f"[FIT]  center={center_px:.2f}px  half_width={half_width_px:.2f}px")
     print(f"[FLAT] [{a},{b})  width={b-a}px "
           f"({(b-a)*cam_pitch_um:.1f} µm)  mean={mean_val:.1f}")
-    print(f"[METR] RMS={rms_pct:.4f}%   Pk-Pk={ppk_pct:.4f}%")
+    print(f"[METR] RMS={rms_pct:.4f}%   Pk-Pk={ppk_pct:.4f}%   Eff={eff_pct:.4f}%")
     print(f"[SAVE] {plot_path}")
     if result_path is not None:
         print(f"[SAVE] {result_path}")

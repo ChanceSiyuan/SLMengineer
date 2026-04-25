@@ -131,11 +131,13 @@ def main() -> None:
             "iter": i,
             "rms_percent": result["rms_percent"],
             "pk_pk_percent": result["pk_pk_percent"],
+            "efficiency_observed": result["efficiency_observed"],
             "flat_mean": result["flat_top_mean_intensity"],
             "reweight_was_applied": last_w is not None,
         })
         print(f"[ITER {i:02d}] rms={result['rms_percent']:.3f}%  "
-              f"pkpk={result['pk_pk_percent']:.3f}%")
+              f"pkpk={result['pk_pk_percent']:.3f}%  "
+              f"eff={100*result['efficiency_observed']:.3f}%")
 
         if (i + 1) % STEPS == 0 and (i + 1) < TOTAL_LOOP:
             v_avg = np.mean(np.stack(flat_buffer), axis=0)
