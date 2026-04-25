@@ -35,8 +35,8 @@ STEPS      = 1       # refresh payload every STEPS iters using averaged v
 STEEPNESS  = 0.2     # 0: no correction; 1: w = sqrt(1/v). Kept small + clipped.
 CLIP_LO    = 0.85    # hard floor on w — guarantees "slight correction" invariant
 CLIP_HI    = 1.15    # hard ceiling on w
-FLAT_A_UM  = 50      # fixed per issue #23
-FLAT_B_UM  = 200     # fixed per issue #23
+FLAT_A_UM  = float(os.environ.get("SHEET_FLAT_A_UM", 50))   # default per issue #23
+FLAT_B_UM  = float(os.environ.get("SHEET_FLAT_B_UM", 200))  # default per issue #23
 
 # Per-issue test convention: always run the loop with SLM_FLAT_WIDTH=40,
 # SLM_GAUSS_SIGMA=2 (matches the pre-loop committed-payload baseline at 985a171).
@@ -96,11 +96,13 @@ def push_run_retry(payload_arg: str) -> None:
 
 def main() -> None:
     ts = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-    out_dir = REPO_ROOT / "data" / f"sheet_inloop_{ts}"
+    tag = f"_a{int(FLAT_A_UM)}_b{int(FLAT_B_UM)}"
+    out_dir = REPO_ROOT / "data" / f"sheet_inloop_{ts}{tag}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"[INLOOP] total_loop={TOTAL_LOOP} steps={STEPS} steepness={STEEPNESS} "
-          f"clip=[{CLIP_LO},{CLIP_HI}] slm_flat_width={SLM_FLAT_WIDTH_PX}px")
+          f"clip=[{CLIP_LO},{CLIP_HI}] slm_flat_width={SLM_FLAT_WIDTH_PX}px "
+          f"flat=[{FLAT_A_UM},{FLAT_B_UM}]um")
     print(f"[INLOOP] output dir: {out_dir}")
 
     generate_sheet()
@@ -151,6 +153,8 @@ def main() -> None:
         "hyperparams": {
             "total_loop": TOTAL_LOOP, "steps": STEPS, "steepness": STEEPNESS,
             "flat_a_um": FLAT_A_UM, "flat_b_um": FLAT_B_UM,
+            "slm_flat_width_px": SLM_FLAT_WIDTH_PX,
+            "slm_gauss_sigma":   SLM_GAUSS_SIGMA,
         },
         "iterations": history,
         "final_reweight": None if last_w is None else last_w.tolist(),
