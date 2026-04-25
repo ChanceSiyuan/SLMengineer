@@ -38,14 +38,12 @@ CLIP_HI    = 1.15    # hard ceiling on w
 FLAT_A_UM  = 50      # fixed per issue #23
 FLAT_B_UM  = 200     # fixed per issue #23
 
-# Geometry alignment: make SLM target flat region span the same µm extent as
-# the camera analysis window [FLAT_A_UM, FLAT_B_UM], so the reweight vector
-# isn't stretched into the target's edge-taper tails (iter-2 failure mode).
-# Focal pitch is ~3.957 µm/px at the default SLM_ARRAY_BIT=12 (4096² grid);
-# verified via params.json after each generate_sheet() call.
-FOCAL_PITCH_UM_DEFAULT = 3.957
-SLM_FLAT_WIDTH_PX = int(round((FLAT_B_UM - FLAT_A_UM) / FOCAL_PITCH_UM_DEFAULT))
-os.environ.setdefault("SLM_FLAT_WIDTH", str(SLM_FLAT_WIDTH_PX))
+# Per-issue test convention: always run the loop with SLM_FLAT_WIDTH=40,
+# SLM_GAUSS_SIGMA=2 (matches the pre-loop committed-payload baseline at 985a171).
+SLM_FLAT_WIDTH_PX = 40
+SLM_GAUSS_SIGMA   = 2
+os.environ["SLM_FLAT_WIDTH"]  = str(SLM_FLAT_WIDTH_PX)
+os.environ["SLM_GAUSS_SIGMA"] = str(SLM_GAUSS_SIGMA)
 
 PUSH_RETRY_COUNT  = 3
 PUSH_RETRY_SLEEP  = 10
