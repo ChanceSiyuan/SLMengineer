@@ -220,13 +220,10 @@ def light_sheet(
     if reweight is not None:
         rw = np.asarray(reweight, dtype=np.float64).ravel()
         if rw.size >= 2:
-            idx_f = np.clip((u + half) / (2.0 * half), 0.0, 1.0) * (rw.size - 1)
-            idx_lo = np.clip(np.floor(idx_f).astype(int), 0, rw.size - 1)
-            idx_hi = np.minimum(idx_lo + 1, rw.size - 1)
-            frac = idx_f - idx_lo
-            weight_map = (1.0 - frac) * rw[idx_lo] + frac * rw[idx_hi]
-            in_flat = np.abs(u) <= half
-            along = np.where(in_flat, along * weight_map, along)
+            # left=right=1.0 keeps edge-taper tails (|u| > half) at their
+            # un-reweighted amplitude; the reweight only affects the flat region.
+            xp = np.linspace(-half, half, rw.size)
+            along = along * np.interp(u, xp, rw, left=1.0, right=1.0)
 
     field = (along * perp).astype(np.complex128)
     power = np.sum(np.abs(field) ** 2)

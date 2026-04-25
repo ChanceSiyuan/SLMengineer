@@ -17,46 +17,91 @@ The repo covers both ends of the workflow:
    back. See [`windows_runner/README.md`](windows_runner/README.md) for the
    lab-side runner.
 
-## Two ways to use this
+## Three machine roles
 
-- **Offline simulation** — Linux box with optional CUDA. Run the algorithms on
-  numpy/torch arrays, inspect convergence, iterate on ideas. No lab access
-  required.
-- **Closed-loop hardware** — the Linux box computes the screen and orchestrates
-  everything over SSH/SCP; the Windows lab box runs the Hamamatsu SLM and the
-  Vimba camera via [`windows_runner/`](windows_runner/). The division exists so
-  refactors on the compute side don't destabilise the lab.
+The workflow is split across up to three machines, each with a distinct job.
+Pick the row that matches the box you're on:
 
-## Quickstart
+| Machine | Job | Compute entry point | Reaches the SLM via |
+|---|---|---|---|
+| **Remote Linux dev box** | Compute CGM + orchestrate over SSH (WAN / Tailscale) | `scripts/<shape>/testfile_*.py` → [`push_run.sh`](push_run.sh) | SSH to the `windows_remote` block in [`hamamatsu_test_config.json`](hamamatsu_test_config.json) |
+| **In-lab Windows workstation** (no hardware attached) | Compute CGM + orchestrate over SSH (LAN) | `scripts/<shape>/testfile_*.py` → [`push_run.ps1`](push_run.ps1) | SSH to the `windows_local` block in [`hamamatsu_test_config.json`](hamamatsu_test_config.json) |
+| **SLM-attached Windows** (lab hardware) | Receive the payload, drive the Hamamatsu SLM + Vimba camera, capture frames | [`windows_runner/slm_local.bat`](windows_runner/slm_local.bat) (standalone) **or** [`slmrun.bat`](slmrun.bat) (invoked over SSH by the first two) | direct USB/DVI to the hardware |
 
-One-line workflow via the top-level [`./slm.sh`](slm.sh) dispatcher:
+The first two compute the `.npz` SLM screen locally and ship it to the third.
+Only the third machine needs the Hamamatsu driver + Vimba SDK + `wxPython` +
+`vmbpy` (the `hardware` extra in [`pyproject.toml`](pyproject.toml)).
+
+## Quickstart — pick the machine you're on
+
+### 1. Remote Linux dev box (compute + drive over WAN SSH)
 
 ```bash
 git clone https://github.com/ChanceSiyuan/SLMengineer.git
 cd SLMengineer
-uv sync --all-extras
+uv sync --extra gpu --extra dev              # no hardware extra needed
 
-./slm.sh list                              # show shapes with a committed example
-./slm.sh example sheet                     # restore the bundled example into payload/sheet/
-./slm.sh push    sheet --png-analy         # push to the Windows SLM, pull analysis PNG+JSON
+# Compute the payload locally (CUDA-aware)
+uv run python scripts/sheet/testfile_sheet.py
+# → payload/sheet/testfile_sheet_payload.npz
+
+# Push to the lab SLM, capture, pull analysis back
+./push_run.sh payload/sheet/testfile_sheet_payload.npz --png-analy
+# → data/sheet/testfile_sheet_analysis.{png,json}
+
+# Closed-loop uniformity correction (issue #23) — 10 push/analyse iterations
+uv run python scripts/sheet/sheet_inloop.py
+# → data/sheet_inloop_<timestamp>/iter_{00..09}.{bmp,png,json} + summary.json
 ```
 
-Every shape under [`examples/`](examples/) ships with a precomputed
-`example_<shape>_{payload.npz,params.json,preview.pdf}`, so first-time users can
-drive the SLM **without rerunning any CGM/WGS optimisation**.  Regenerate from
-scratch with `./slm.sh compute <shape>`; the output lands at
-`payload/<subdir>/testfile_<shape>_*`, keeping the committed examples untouched.
+`push_run.sh` reads the **`windows_remote`** block of
+[`hamamatsu_test_config.json`](hamamatsu_test_config.json) for SSH host/port/user.
+Passwordless (key-based) SSH required.
 
-On the Windows lab box itself (SLM + camera directly attached, no SSH needed):
+### 2. In-lab Windows workstation (no SLM, drive over LAN SSH)
 
+From **PowerShell** at the repo root:
+
+```powershell
+git clone https://github.com/ChanceSiyuan/SLMengineer.git
+cd SLMengineer
+uv sync --extra gpu --extra dev
+
+# Compute the payload locally
+uv run python scripts\sheet\testfile_sheet.py
+
+# Push over LAN SSH to the SLM-attached Windows, capture, pull analysis
+.\push_run.ps1 payload\sheet\testfile_sheet_payload.npz -PngAnaly
+
+# Closed-loop — sheet_inloop.py auto-selects push_run.ps1 on Windows
+uv run python scripts\sheet\sheet_inloop.py
 ```
-windows_runner\slm_local.bat payload\sheet\testfile_sheet_payload.npz --png
+
+`push_run.ps1` reads the **`windows_local`** block of
+[`hamamatsu_test_config.json`](hamamatsu_test_config.json). Flag spelling
+differs from the bash script: `-HoldOn`, `-Png`, `-PngAnaly` (single dash,
+PowerShell switches).
+
+### 3. SLM-attached Windows (hardware directly connected, no SSH)
+
+Install the hardware extras once — this is the only machine that needs them:
+
+```powershell
+uv sync --all-extras          # wxPython + vmbpy + Pillow + zernike
 ```
 
-The remote SSH endpoint is configured in
-[`hamamatsu_test_config.json`](hamamatsu_test_config.json) under the
-`windows_remote` block (host / port / user / remote path).  Edit that file to
-point `./slm.sh push …` at a different Windows box.
+Then drive any payload locally — same flag surface as `push_run.sh` but
+without the push/pull step:
+
+```powershell
+.\windows_runner\slm_local.bat payload\sheet\testfile_sheet_payload.npz --png-analy
+```
+
+This reads the `.npz` directly from disk, invokes `windows_runner\runner.py`,
+displays on the SLM, and captures with the Vimba camera. See
+[`windows_runner/README.md`](windows_runner/README.md) for driver install,
+Vimba SDK setup, and the OpenSSH server config required if this box also needs
+to serve machines (1) or (2).
 
 ## Algorithms
 
@@ -210,55 +255,43 @@ phi = CGM_phase_generate(
 For a walkthrough of what CGM is doing internally, see
 [`docs/cgm_implementation.md`](docs/cgm_implementation.md).
 
-## Hardware workflow
+## Hardware workflow details
 
-Prerequisite: Windows lab box reachable over SSH at the host/port/user
-configured in the `windows_remote` block of
-[`hamamatsu_test_config.json`](hamamatsu_test_config.json).  The runner on the
-Windows side must already be set up per
-[`windows_runner/README.md`](windows_runner/README.md).
+See **[Quickstart](#quickstart--pick-the-machine-youre-on)** above for the
+end-to-end recipe on each machine. This section documents the shared
+artefacts and mode flags.
 
-End-to-end light-sheet example — either via the [`./slm.sh`](slm.sh) dispatcher
-(recommended):
+A single payload run produces:
 
-```bash
-./slm.sh compute sheet                     # or: ./slm.sh example sheet
-./slm.sh push    sheet --png-analy
+```
+payload/sheet/testfile_sheet_payload.npz       (uint8 SLM screen)
+payload/sheet/testfile_sheet_params.json       (metadata + runner_defaults)
+payload/sheet/testfile_sheet_preview.pdf       (6-panel diagnostic)
 ```
 
-or the equivalent lower-level invocation:
+After `push_run.sh` / `push_run.ps1` / `slm_local.bat` completes:
 
-```bash
-# 1. Generate the payload locally (CGM on GPU if available)
-uv run python scripts/sheet/testfile_sheet.py
-# ─ payload/sheet/testfile_sheet_payload.npz       (uint8 SLM screen)
-# ─ payload/sheet/testfile_sheet_params.json       (metadata + runner_defaults)
-# ─ payload/sheet/testfile_sheet_preview.pdf       (6-panel diagnostic)
-
-# 2. Push to the Windows box, display on the SLM, capture frames, pull results
-./push_run.sh payload/sheet/testfile_sheet_payload.npz --png-analy
-# ─ data/sheet/testfile_sheet_analysis.png         (2-panel sheet ROI + profile)
-# ─ data/sheet/testfile_sheet_analysis.json        (uniformity / flat-top bounds / RMS)
-# ─ data/sheet/testfile_sheet_run.json             (exposure, frame count, timestamps)
+```
+data/sheet/testfile_sheet_{before,after}.bmp   (raw camera frames)
+data/sheet/testfile_sheet_analysis.{png,json}  (with --png-analy / -PngAnaly)
+data/sheet/testfile_sheet_run.json             (exposure, frame count, timestamps)
 ```
 
-On the Windows box itself (direct-attached SLM + camera, no SSH), use
-[`windows_runner/slm_local.bat`](windows_runner/slm_local.bat) with the same
-mode flags — it mirrors `push_run.sh` but skips the push/pull.
+Mode flags (bash vs PowerShell spelling):
 
-`push_run.sh` modes:
+| bash flag | PowerShell switch | Behaviour | Pulled artefacts |
+|---|---|---|---|
+| *(none)* | *(none)* | Display + capture; pull raw BMP frames | `*_before.bmp`, `*_after.bmp`, `*_run.json` |
+| `--png` | `-Png` | Render each BMP to a hot-colormap PNG on Windows; pull only PNGs | `*_before.png`, `*_after.png`, `*_run.json` |
+| `--png-analy` | `-PngAnaly` | Run [`analysis_sheet.py`](scripts/sheet/analysis_sheet.py) on Windows; pull its outputs | `*_analysis.png`, `*_analysis.json`, `*_run.json` |
+| `--hold-on` | `-HoldOn` | Display on the SLM and hold indefinitely; no capture, no pull | *(none)* |
 
-| Flag | Behaviour | Pulled artefacts |
-|---|---|---|
-| *(none)* | Display + capture; pull raw BMP frames | `*_before.bmp`, `*_after.bmp`, `*_run.json` |
-| `--png` | Render each BMP to a hot-colormap PNG on Windows; pull only PNGs | `*_before.png`, `*_after.png`, `*_run.json` |
-| `--png-analy` | Run [`scripts/sheet/analysis_sheet.py`](scripts/sheet/analysis_sheet.py) remotely against the capture; pull its outputs | `*_analysis.png`, `*_analysis.json`, `*_run.json` |
-| `--hold-on` | Display on the SLM and hold indefinitely; no capture, no pull | *(none)* |
+`--png` / `-Png` and `--png-analy` / `-PngAnaly` are mutually exclusive.
+`slm_local.bat` accepts the bash-style long flags (it's a thin local wrapper
+around the same runner).
 
-`--png` and `--png-analy` are mutually exclusive.
-
-Other payload generators share the same env-var surface and target-selection
-convention — see [`docs/examples.md`](docs/examples.md) for the full list.
+Other payload generators share the same env-var surface — see
+[`docs/examples.md`](docs/examples.md) for the full list.
 
 ## Configuration
 
@@ -359,9 +392,11 @@ and aberration. Shared fixtures live in [`tests/conftest.py`](tests/conftest.py)
   moving for >50 iters, the solver is already at its local minimum. Try a
   better seed (`stationary_phase_light_sheet` for line targets) rather than
   adding iterations.
-- **SCP errors in `push_run.sh`** — the SSH host/port/user are literals at
-  the top of the script (`SERVER_IP`, `PORT`, `USER`). Adjust there if the
-  lab network changes. The script requires passwordless SSH.
+- **SCP errors in `push_run.sh` / `push_run.ps1`** — SSH host/port/user
+  come from [`hamamatsu_test_config.json`](hamamatsu_test_config.json)
+  (`windows_remote` block for the bash script, `windows_local` block for
+  the PowerShell script). Edit that file if the lab network changes. Both
+  scripts require passwordless (key-based) SSH.
 - **Payload displayed but capture is blank** — check `*_run.json` for the
   actual exposure used; the camera may be saturating or starving. Adjust
   `SLM_ETIME_US` in the payload script (not on the Windows side).

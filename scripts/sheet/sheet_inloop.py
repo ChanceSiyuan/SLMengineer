@@ -15,6 +15,7 @@ plus a ``summary.json`` tracking rms / pk-pk across iterations.
 from __future__ import annotations
 
 import json
+import os
 import platform
 import shutil
 import subprocess
@@ -28,33 +29,71 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "sheet"))
 
-from testfile_sheet import main as generate_sheet   # noqa: E402
-from analysis_sheet import analyze                  # noqa: E402
-
 # ----- Hyperparameters -----
-TOTAL_LOOP = 10     # push+analyze iterations (= PNGs generated)
-STEPS      = 1      # refresh payload every STEPS iters using averaged v
-STEEPNESS  = 0.5    # 0: uniform (no correction); 1: w = v^{-1}
-FLAT_A_UM  = 50     # fixed per issue #23
-FLAT_B_UM  = 200    # fixed per issue #23
+TOTAL_LOOP = 10      # push+analyze iterations (= PNGs generated)
+STEPS      = 1       # refresh payload every STEPS iters using averaged v
+STEEPNESS  = 0.2     # 0: no correction; 1: w = sqrt(1/v). Kept small + clipped.
+CLIP_LO    = 0.85    # hard floor on w — guarantees "slight correction" invariant
+CLIP_HI    = 1.15    # hard ceiling on w
+FLAT_A_UM  = 50      # fixed per issue #23
+FLAT_B_UM  = 200     # fixed per issue #23
+
+# Geometry alignment: make SLM target flat region span the same µm extent as
+# the camera analysis window [FLAT_A_UM, FLAT_B_UM], so the reweight vector
+# isn't stretched into the target's edge-taper tails (iter-2 failure mode).
+# Focal pitch is ~3.957 µm/px at the default SLM_ARRAY_BIT=12 (4096² grid);
+# verified via params.json after each generate_sheet() call.
+FOCAL_PITCH_UM_DEFAULT = 3.957
+SLM_FLAT_WIDTH_PX = int(round((FLAT_B_UM - FLAT_A_UM) / FOCAL_PITCH_UM_DEFAULT))
+os.environ.setdefault("SLM_FLAT_WIDTH", str(SLM_FLAT_WIDTH_PX))
+
+PUSH_RETRY_COUNT  = 3
+PUSH_RETRY_SLEEP  = 10
 
 IS_WINDOWS = platform.system() == "Windows"
 AFTER_BMP = REPO_ROOT / "data" / "sheet" / "testfile_sheet_after.bmp"
 PAYLOAD   = REPO_ROOT / "payload" / "sheet" / "testfile_sheet_payload.npz"
 PUSH_RUN  = REPO_ROOT / ("push_run.ps1" if IS_WINDOWS else "push_run.sh")
 
+from testfile_sheet import main as generate_sheet   # noqa: E402
+from analysis_sheet import analyze                  # noqa: E402
 
-def compute_reweight(v: np.ndarray, steepness: float) -> np.ndarray:
-    """w close to 1 when steepness small; w = v^{-1} (normalized) when steepness=1.
 
-    Linear blend between uniform-1 and inverse-normalized; mean(w) = 1.
+def compute_reweight(v: np.ndarray, steepness: float,
+                     clip_lo: float = CLIP_LO, clip_hi: float = CLIP_HI) -> np.ndarray:
+    """Amplitude-domain correction, steepness-blended and hard-clipped.
+
+    v is measured intensity; the target amplitude multiplier that produces a
+    focal intensity change of factor k is sqrt(k). So w = sqrt(1/v_norm)
+    matches the WGS adaptive formula in imgpy.py::fftLoop_adapt. Clipping
+    guarantees the "slight correction" invariant even if v has outliers.
     """
     v = np.asarray(v, dtype=np.float64)
     v_norm = np.clip(v / v.mean(), 1e-6, None)
-    inv = 1.0 / v_norm
-    inv = inv / inv.mean()
-    w = (1.0 - steepness) + steepness * inv
+    inv_sqrt = 1.0 / np.sqrt(v_norm)
+    inv_sqrt = inv_sqrt / inv_sqrt.mean()
+    w = (1.0 - steepness) + steepness * inv_sqrt
+    w = np.clip(w, clip_lo, clip_hi)
     return w / w.mean()
+
+
+def push_run_retry(payload_arg: str) -> None:
+    """Call push_run.{sh,ps1} with retry; transient SSH drops don't waste the CGM work."""
+    for attempt in range(PUSH_RETRY_COUNT):
+        try:
+            if IS_WINDOWS:
+                cmd = ["powershell", "-ExecutionPolicy", "Bypass", "-File",
+                       str(PUSH_RUN), payload_arg]
+            else:
+                cmd = ["bash", str(PUSH_RUN), payload_arg]
+            subprocess.run(cmd, cwd=str(REPO_ROOT), check=True)
+            return
+        except subprocess.CalledProcessError as e:
+            if attempt == PUSH_RETRY_COUNT - 1:
+                raise
+            print(f"[RETRY] push_run attempt {attempt + 1}/{PUSH_RETRY_COUNT} "
+                  f"failed (exit {e.returncode}); backing off {PUSH_RETRY_SLEEP}s")
+            time.sleep(PUSH_RETRY_SLEEP)
 
 
 def main() -> None:
@@ -62,10 +101,10 @@ def main() -> None:
     out_dir = REPO_ROOT / "data" / f"sheet_inloop_{ts}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"[INLOOP] total_loop={TOTAL_LOOP} steps={STEPS} steepness={STEEPNESS}")
+    print(f"[INLOOP] total_loop={TOTAL_LOOP} steps={STEPS} steepness={STEEPNESS} "
+          f"clip=[{CLIP_LO},{CLIP_HI}] slm_flat_width={SLM_FLAT_WIDTH_PX}px")
     print(f"[INLOOP] output dir: {out_dir}")
 
-    # Iter 0 setup: uniform-target payload.
     generate_sheet()
 
     flat_buffer: list[np.ndarray] = []
@@ -73,14 +112,8 @@ def main() -> None:
     last_w: np.ndarray | None = None
 
     for i in range(TOTAL_LOOP):
-        # Push phase to hardware + pull back after.bmp.
         payload_arg = str(PAYLOAD.relative_to(REPO_ROOT))
-        if IS_WINDOWS:
-            cmd = ["powershell", "-ExecutionPolicy", "Bypass", "-File",
-                   str(PUSH_RUN), payload_arg]
-        else:
-            cmd = ["bash", str(PUSH_RUN), payload_arg]
-        subprocess.run(cmd, cwd=str(REPO_ROOT), check=True)
+        push_run_retry(payload_arg)
 
         # Archive the raw bmp for this iter before the next push overwrites it.
         iter_bmp = out_dir / f"iter_{i:02d}.bmp"
@@ -107,6 +140,10 @@ def main() -> None:
         if (i + 1) % STEPS == 0 and (i + 1) < TOTAL_LOOP:
             v_avg = np.mean(np.stack(flat_buffer), axis=0)
             w = compute_reweight(v_avg, STEEPNESS)
+            print(f"[UPDATE] v_avg range=[{(v_avg/v_avg.mean()).min():.3f}, "
+                  f"{(v_avg/v_avg.mean()).max():.3f}] "
+                  f"→ w range=[{w.min():.3f}, {w.max():.3f}] "
+                  f"(clip={CLIP_LO}/{CLIP_HI})")
             last_w = w
             generate_sheet(reweight=w)
             flat_buffer.clear()
