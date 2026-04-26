@@ -12,7 +12,7 @@
   "focal_pitch_x_um_per_px": 3.957,
   "focal_pitch_y_um_per_px": 3.957,
   "runner_defaults": {
-    "etime_us": 1000,
+    "etime_us": 1500,
     "n_avg": 20,
     "monitor": 1
   },
@@ -30,21 +30,21 @@
     0
   ],
   "target": "light_sheet",
-  "sheet_flat_width_px": 35,
-  "sheet_flat_width_um_focal": 138.5,
+  "sheet_flat_width_px": 40,
+  "sheet_flat_width_um_focal": 158.28,
   "sheet_gaussian_sigma_px": 2.0,
   "sheet_angle_rad": 0,
-  "sheet_edge_sigma_px": 5.0,
-  "cgm_max_iterations": 1000,
+  "sheet_edge_sigma_px": 3.0,
+  "cgm_max_iterations": 2000,
   "cgm_steepness": 9,
   "cgm_eta_steepness": 8,
   "cgm_setting_eta": 0.1,
   "init_phase_method": "stationary_phase_2d",
-  "cgm_wall_time_s": 161.532,
-  "cgm_per_iter_ms": 161.53,
+  "cgm_wall_time_s": 96.085,
+  "cgm_per_iter_ms": 48.04,
   "cgm_device": "cuda",
-  "final_fidelity": 0.999136,
-  "final_one_minus_fidelity": 0.0008636,
-  "final_efficiency": 0.179904,
-  "timestamp_local": "2026-04-26T22:36:31"
+  "final_fidelity": 0.999267,
+  "final_one_minus_fidelity": 0.0007325,
+  "final_efficiency": 0.195062,
+  "timestamp_local": "2026-04-26T21:12:44"
 }

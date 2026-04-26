@@ -323,7 +323,7 @@ def main():
         help="Manually select the start region index (mu m) for flat-top region counted for rms&pk-pk"
     )
     ap.add_argument(
-        "--flat-b", type=int, default=200,
+        "--flat-b", type=int, default=175,
         help="Manually select the end region index (mu m) for flat-top region counted for rms&pk-pk"
     )
     args = ap.parse_args()

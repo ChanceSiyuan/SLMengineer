@@ -8,6 +8,7 @@ from PIL import Image
 import os
 import time
 import json
+from pathlib import Path
 from slm.aberration import Zernike
 
 # import slmpy
@@ -44,7 +45,21 @@ class SLM_class():  #用于生成输入输出振幅分布
     """
 
     def __init__(self):
-        with open('hamamatsu_test_config.json','r') as file:
+        module_dir = Path(__file__).resolve().parent
+        repo_root = module_dir.parent.parent
+        config_candidates = [
+            Path.cwd() / "hamamatsu_test_config.json",
+            repo_root / "hamamatsu_test_config.json",
+            module_dir / "hamamatsu_test_config.json",
+        ]
+        config_path = next((p for p in config_candidates if p.exists()), None)
+        if config_path is None:
+            raise FileNotFoundError(
+                "Could not find 'hamamatsu_test_config.json'. "
+                "Checked current working directory, repo root, and src/slm."
+            )
+
+        with open(config_path, 'r') as file:
             data = json.load(file)
         self.pixelpitch = data['pixelpitch']  # SLM像素尺寸，单位um
         self.SLMRes = data['SLMRes']  # SLM屏幕分辨率
@@ -749,11 +764,11 @@ class SLM_class():  #用于生成输入输出振幅分布
 
     def light_sheet_target(
         self, flat_width, gaussian_sigma, angle=0.0, center=None, edge_sigma=0.0,
-        reweight=None,
+        reweight=None, Plot=False,
     ):
         """CGM-only: 1D top-hat (Rydberg light sheet) with Gaussian perpendicular."""
         from slm.targets import light_sheet
-        return light_sheet(
+        target_amp = light_sheet(
             (int(self.ImgResY), int(self.ImgResX)),
             flat_width=flat_width,
             gaussian_sigma=gaussian_sigma,
@@ -762,6 +777,50 @@ class SLM_class():  #用于生成输入输出振幅分布
             edge_sigma=edge_sigma,
             reweight=reweight,
         )
+        if Plot:
+            amp = np.abs(target_amp)
+            phase = np.angle(target_amp)
+            # Auto-detect a compact zoom ROI from high-amplitude support.
+            # This avoids huge boxes caused by very weak long tails.
+            peak = np.max(amp)
+            support = amp >= (peak * 0.05) if peak > 0 else np.zeros_like(amp, dtype=bool)
+            if not np.any(support):
+                support = amp > 0
+            rows, cols = np.where(support)
+            if rows.size > 0:
+                margin = 10
+                r0 = max(0, rows.min() - margin)
+                r1 = min(amp.shape[0], rows.max() + margin + 1)
+                c0 = max(0, cols.min() - margin)
+                c1 = min(amp.shape[1], cols.max() + margin + 1)
+                amp_zoom = amp[r0:r1, c0:c1]
+                phase_zoom = phase[r0:r1, c0:c1]
+                zoom_shape = amp_zoom.shape
+            else:
+                amp_zoom = amp
+                phase_zoom = phase
+                zoom_shape = amp.shape
+
+            plt.figure(figsize=(10, 8))
+            plt.subplot(2, 2, 1)
+            plt.imshow(amp, cmap="magma")
+            plt.colorbar()
+            plt.title("light sheet target amplitude")
+            plt.subplot(2, 2, 2)
+            plt.imshow(phase, cmap="twilight")
+            plt.colorbar()
+            plt.title("light sheet target phase")
+            plt.subplot(2, 2, 3)
+            plt.imshow(amp_zoom, cmap="magma")
+            plt.colorbar()
+            plt.title(f"light sheet amplitude (zoom, {zoom_shape[0]}x{zoom_shape[1]})")
+            plt.subplot(2, 2, 4)
+            plt.imshow(phase_zoom, cmap="twilight")
+            plt.colorbar()
+            plt.title(f"light sheet phase (zoom, {zoom_shape[0]}x{zoom_shape[1]})")
+            plt.tight_layout()
+            plt.show()
+        return target_amp
 
     def stationary_phase_sheet(
         self, flat_width, gaussian_sigma=None, angle=0.0, center=None,

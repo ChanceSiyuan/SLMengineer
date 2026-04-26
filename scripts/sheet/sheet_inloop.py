@@ -35,12 +35,11 @@ STEPS      = 1       # refresh payload every STEPS iters using averaged v
 STEEPNESS  = 0.2     # 0: no correction; 1: w = sqrt(1/v). Kept small + clipped.
 CLIP_LO    = 0.85    # hard floor on w — guarantees "slight correction" invariant
 CLIP_HI    = 1.15    # hard ceiling on w
-FLAT_A_UM  = float(os.environ.get("SHEET_FLAT_A_UM", 50))   # default per issue #23
-FLAT_B_UM  = float(os.environ.get("SHEET_FLAT_B_UM", 200))  # default per issue #23
+FLAT_A_UM  = float(os.environ.get("SHEET_FLAT_A_UM", 50)) 
+FLAT_B_UM  = float(os.environ.get("SHEET_FLAT_B_UM", 175))
 
-# Per-issue test convention: always run the loop with SLM_FLAT_WIDTH=40,
-# SLM_GAUSS_SIGMA=2 (matches the pre-loop committed-payload baseline at 985a171).
-SLM_FLAT_WIDTH_PX = 40
+
+SLM_FLAT_WIDTH_PX = 35
 SLM_GAUSS_SIGMA   = 2
 os.environ["SLM_FLAT_WIDTH"]  = str(SLM_FLAT_WIDTH_PX)
 os.environ["SLM_GAUSS_SIGMA"] = str(SLM_GAUSS_SIGMA)
@@ -126,6 +125,7 @@ def main() -> None:
             flat_a=FLAT_A_UM, flat_b=FLAT_B_UM,
         )
         flat = np.asarray(result["flat_profile"], dtype=np.float64)
+        
         flat_buffer.append(flat)
         history.append({
             "iter": i,

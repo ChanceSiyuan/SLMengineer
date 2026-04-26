@@ -57,21 +57,21 @@ def main(reweight: np.ndarray | None = None) -> dict:
     # compute grid — ~2.7× better RMS on camera than the old 1024² path
     # at equivalent physical sheet size (focal pitch 3.957 µm/px, so
     # flat_width=36 px ≈ 142 µm, matching the original 9 px × 15.83 µm/px).
-    etime_us           = int(os.environ.get("SLM_ETIME_US", 1500))
+    etime_us           = int(os.environ.get("SLM_ETIME_US", 1000))
     n_avg              = int(os.environ.get("SLM_N_AVG", 20))
     LUT                = 207
     fresnel_sd         = int(os.environ.get("SLM_FRESNEL_SD", 1000))
 
-    sheet_flat_width     = int(os.environ.get("SLM_FLAT_WIDTH", 30))
-    sheet_gaussian_sigma = float(os.environ.get("SLM_GAUSS_SIGMA", 4))
+    sheet_flat_width     = int(os.environ.get("SLM_FLAT_WIDTH", 35))
+    sheet_gaussian_sigma = float(os.environ.get("SLM_GAUSS_SIGMA", 2))
     sheet_edge_sigma     = float(os.environ.get("SLM_EDGE_SIGMA", 5))
     sheet_angle          = 0
     # Target is shifted diagonally from the zero-order so the first-order
     # does not overlap with the undiffracted beam at grid centre.
-    target_shift_fpx     = int(os.environ.get("SLM_TARGET_SHIFT_FPX", 80))
+    target_shift_fpx     = int(os.environ.get("SLM_TARGET_SHIFT_FPX", 50))
 
     cgm_steepness      = int(os.environ.get("SLM_CGM_STEEPNESS", 9))
-    cgm_max_iterations = int(os.environ.get("SLM_CGM_MAX_ITER", 4000))
+    cgm_max_iterations = int(os.environ.get("SLM_CGM_MAX_ITER", 1000))
     setting_eta        = float(os.environ.get("SLM_SETTING_ETA", 0.1))
     cgm_eta_steepness  = int(os.environ.get("SLM_CGM_ETA_STEEPNESS", 8))
 
