@@ -834,19 +834,26 @@ def CGM_phase_generate_1d(
 
     if Plot:
         import matplotlib.pyplot as plt
+        fig, axes = plt.subplots(1, 2, figsize=(12, 10))
+        ax0 = axes[0]
+        ax1 = axes[1]
+        ax0.plot(cost_history)
+        ax0.set_yscale("log")
+        ax0.grid()
+        ax0.set_xlabel("Iteration")
+        ax0.set_ylabel("CGM cost")
+        ax0.set_title("CGM convergence")
+        phi_np = phi_t.detach().cpu().numpy().astype(np.float64)
+        phi_wrapped = np.angle(np.exp(1j * phi_np))
+        im1 = ax1.imshow(phi_wrapped[np.newaxis, :], aspect="auto", cmap="twilight", vmin=-np.pi, vmax=np.pi)
+        ax1.set_title("Optimized SLM phase")
+        ax1.set_xticks([])
+        ax1.set_yticks([])
+        fig.colorbar(im1, ax=ax1, fraction=0.046, pad=0.04, label="phase (rad)")
 
-        E_out_np = E_out_t.detach().cpu().numpy().astype(np.complex128)
-        target_np = target_t.detach().cpu().numpy().astype(np.complex128)
-        region_np2 = region_t.detach().cpu().numpy().astype(np.float64)
-        f = fidelity(E_out_np, target_np, region_np2)
-        e = efficiency(E_out_np, region_np2)
-        plt.figure()
-        plt.plot(cost_history)
-        plt.yscale("log"); plt.grid()
-        plt.xlabel("Iteration"); plt.ylabel("CGM cost")
-        plt.title("CGM 1D convergence")
         plt.show()
-        print(f"CGM-1D: {n_iters} iter, F={f:.4f}, eta={e:.4f}")
+        plt.close(fig)
+
 
     return phi_t.to(device=caller_device, dtype=torch.float32)
 
