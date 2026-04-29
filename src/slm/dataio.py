@@ -297,3 +297,27 @@ def plot_sheet_analysis(result: dict, figsize=(10, 8)):
     ax_prof.legend(loc="lower right", fontsize=9)
     fig.tight_layout()
     return fig
+
+
+def compute_reweight(
+    v: np.ndarray,
+    steepness: float,
+    clip_lo: float = 0.85,
+    clip_hi: float = 1.15,
+) -> np.ndarray:
+    """Amplitude-domain feedback weight (sqrt-inverse, clipped, mean-normalized).
+
+    Used by closed-loop SLM uniformity feedback: given a measured 1D
+    intensity profile *v* across the flat region, return a length-N
+    multiplicative reweight that pushes the next iteration toward
+    uniformity.  ``steepness=0`` disables correction (returns ones-like);
+    ``steepness=1`` applies the full ``1/sqrt(v)`` correction.  ``clip_lo``
+    and ``clip_hi`` bound the per-sample weight to keep CGM stable.
+    """
+    v = np.asarray(v, dtype=np.float64)
+    v_norm = np.clip(v / v.mean(), 1e-6, None)
+    inv_sqrt = 1.0 / np.sqrt(v_norm)
+    inv_sqrt = inv_sqrt / inv_sqrt.mean()
+    w = (1.0 - steepness) + steepness * inv_sqrt
+    w = np.clip(w, clip_lo, clip_hi)
+    return w / w.mean()

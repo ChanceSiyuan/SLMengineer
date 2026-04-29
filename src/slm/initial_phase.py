@@ -175,7 +175,7 @@ def stationary_phase_light_sheet(
     focal_length_um: float,
     pixel_pitch_um: float,
     angle: float = 0.0,
-    center_um: tuple[float, float] = (0.0, 0.0),
+    shift_um: tuple[float, float] = (0.0, 0.0),
     beam_center_um: tuple[float, float] = (0.0, 0.0),
     perp_target_w_um: float | None = None,
 ) -> np.ndarray:
@@ -272,9 +272,9 @@ def stationary_phase_light_sheet(
     # Linear shift ramp: moves the top-hat to ``center_um`` at the focal plane.
     # Sign verified by test_stationary_phase_linear_shift_sign against the
     # project's fft_propagate (fftshift . fft2 . ifftshift, norm='ortho').
-    xc_um, yc_um = center_um
+    xc_um, yc_um = shift_um
     if xc_um != 0.0 or yc_um != 0.0:
-        phi = phi + 2.0 * np.pi * (xc_um * XX + yc_um * YY) / (
+        phi = phi - 2.0 * np.pi * (xc_um * XX + yc_um * YY) / (
             wavelength_um * focal_length_um
         )
 

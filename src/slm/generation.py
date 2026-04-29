@@ -763,7 +763,7 @@ class SLM_class():  #用于生成输入输出振幅分布
         )
 
     def light_sheet_target(
-        self, flat_width, gaussian_sigma, angle=0.0, center=None, edge_sigma=0.0,
+        self, flat_width, gaussian_sigma, angle=0.0, shift=None, edge_sigma=0.0,
         reweight=None,
     ):
         """CGM-only: 1D top-hat (Rydberg light sheet) with Gaussian perpendicular."""
@@ -773,14 +773,14 @@ class SLM_class():  #用于生成输入输出振幅分布
             flat_width=flat_width,
             gaussian_sigma=gaussian_sigma,
             angle=angle,
-            center=center,
+            shift=shift,
             edge_sigma=edge_sigma,
             reweight=reweight,
         )
         return target_amp
 
     def stationary_phase_sheet(
-        self, flat_width, gaussian_sigma=None, angle=0.0, center=None,
+        self, flat_width, gaussian_sigma=None, angle=0.0, shift=None,
     ):
         """Stationary-phase SLM seed for a light-sheet target.
 
@@ -814,13 +814,13 @@ class SLM_class():  #用于生成输入输出振幅分布
         from slm.initial_phase import stationary_phase_light_sheet
 
         ny, nx = int(self.ImgResY), int(self.ImgResX)
-        if center is None:
-            center_um = (0.0, 0.0)
+        if shift is None:
+            shift_um = (0.0, 0.0)
         else:
-            row, col = center
-            center_um = (
-                (float(col) - (nx - 1) / 2.0) * float(self.Focalpitchx),
-                (float(row) - (ny - 1) / 2.0) * float(self.Focalpitchy),
+            row, col = shift
+            shift_um = (
+                (float(col)) * float(self.Focalpitchx),
+                (float(row)) * float(self.Focalpitchy),
             )
         # The light_sheet target uses perp = exp(-v^2 / (2*sigma^2)), so the
         # amplitude has stddev ``sigma`` and the intensity 1/e^2 radius is
@@ -839,7 +839,7 @@ class SLM_class():  #用于生成输入输出振幅分布
             focal_length_um=float(self.focallength) / float(self.magnification),
             pixel_pitch_um=float(self.pixelpitch),
             angle=float(angle),
-            center_um=center_um,
+            shift_um=shift_um,
             beam_center_um=tuple(getattr(self, "beam_center_um", (0.0, 0.0))),
             perp_target_w_um=perp_target_w_um,
         )

@@ -9,4 +9,10 @@ block the core path.
 
 __version__ = "0.1.0"
 
-from .dataio import load_bmp, colorize, analyze_sheet, plot_sheet_analysis  # noqa: E402,F401
+from .dataio import (  # noqa: E402,F401
+    load_bmp,
+    colorize,
+    analyze_sheet,
+    plot_sheet_analysis,
+    compute_reweight,
+)

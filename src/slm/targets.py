@@ -168,7 +168,7 @@ def light_sheet(
     flat_width: float,
     gaussian_sigma: float,
     angle: float = 0.0,
-    center: tuple[float, float] | None = None,
+    shift: tuple[float, float] | None = None,
     edge_sigma: float = 0.0,
     reweight: np.ndarray | None = None,
 ) -> np.ndarray:
@@ -196,8 +196,11 @@ def light_sheet(
         any edge_sigma taper tails are left untouched.
     """
     ny, nx = shape
-    if center is None:
+    if shift is None:
         center = ((ny - 1) / 2.0, (nx - 1) / 2.0)
+    else:
+        center = (round((ny - 1) / 2.0 + shift[1]),
+                    round((nx - 1) / 2.0 + shift[0]))
     y = np.arange(ny) - center[0]
     x = np.arange(nx) - center[1]
     yy, xx = np.meshgrid(y, x, indexing="ij")
