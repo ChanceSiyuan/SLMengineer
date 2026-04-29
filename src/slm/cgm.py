@@ -1,7 +1,7 @@
-"""Conjugate Gradient Minimisation for continuous beam shaping (Bowman et al.).
+﻿"""Conjugate Gradient Minimisation for continuous beam shaping (Bowman et al.).
 
 Torch-first implementation.  The only public entry point is
-:func:`CGM_phase_generate` — a torch-tensor API that mirrors
+:func:`CGM_phase_generate` 鈥?a torch-tensor API that mirrors
 ``slm.wgs.WGS_phase_generate`` and is what every hardware script under
 ``scripts/`` calls.  :class:`CGMConfig` + :func:`_initial_phase` are kept
 public because `testfile_{tophat,lg,ring,gline}.py` build a Bowman-style
@@ -39,9 +39,9 @@ class CGMConfig:
     D: float = -np.pi / 2  # linear phase offset magnitude
     theta: float = np.pi / 4  # linear phase angle (diagonal offset)
     track_fidelity: bool = False  # record fidelity each iteration (slower)
-    efficiency_weight: float = 0.0  # weight for (1-η)^2 efficiency penalty
-    eta_min: float = 0.0  # minimum efficiency floor; penalty when η < eta_min
-    eta_steepness: float | None = None  # separate 10^s scale for eta penalty; None → uses steepness
+    efficiency_weight: float = 0.0  # weight for (1-畏)^2 efficiency penalty
+    eta_min: float = 0.0  # minimum efficiency floor; penalty when 畏 < eta_min
+    eta_steepness: float | None = None  # separate 10^s scale for eta penalty; None 鈫?uses steepness
     initial_phase: np.ndarray | None = (
         None  # measured/custom phase; overrides analytical
     )
@@ -335,9 +335,9 @@ def _run_cgm_torch(
         ):
             break
 
-        # Polak-Ribière+ direction update with periodic restart.
+        # Polak-Ribi猫re+ direction update with periodic restart.
         # PR+ is more robust than Fletcher-Reeves on non-convex landscapes:
-        # max(0, β) clips negative β, auto-resetting to steepest descent
+        # max(0, 尾) clips negative 尾, auto-resetting to steepest descent
         # when the gradient reverses direction.
         new_grad_norm_sq_t = (new_grad_t * new_grad_t).sum()
         if grad_norm_sq_t.item() > 0.0 and (i + 1) % 50 != 0:
@@ -416,15 +416,17 @@ def CGM_phase_generate(
     margin : int
         Dilation margin (pixels) around the target used to build the CGM
         measure region.
-    Plot : bool
-        If True, plot the cost history and print a one-line summary of
-        fidelity, efficiency, and iteration count.
-
     Returns
     -------
     torch.Tensor
         Real-valued (float32) SLM phase in radians, same shape and device
         as ``initSLMAmp``.
+    torch.Tensor
+        Complex-valued (complex64) focal-plane field, same shape and device
+        as ``targetAmp``.
+    torch.Tensor
+        Complex-valued (complex64) target field, same shape and device
+        as ``targetAmp``.
     """
     _require_torch()
     from slm.targets import measure_region as _measure_region
@@ -474,31 +476,38 @@ def CGM_phase_generate(
     phi_t, E_out_t, cost_history, _, n_iters = _run_cgm_torch(
         input_amp_t, target_t, region_t, config, phi_init_t,
     )
+    E_out_np = E_out_t.detach().cpu().numpy().astype(np.complex128)
+    target_np = target_t.detach().cpu().numpy().astype(np.complex128)
+    region_np2 = region_t.detach().cpu().numpy().astype(np.float64)
+    f = fidelity(E_out_np, target_np, region_np2)
+    e = efficiency(E_out_np, region_np2)
+
+    print(
+    f"CGM: {n_iters} iter, F={f:.4f}, eta={e:.4f}")
 
     if Plot:
         import matplotlib.pyplot as plt
+        fig, axes = plt.subplots(1, 2, figsize=(12, 10))
+        ax0 = axes[0]
+        ax1 = axes[1]
+        ax0.plot(cost_history)
+        ax0.set_yscale("log")
+        ax0.grid()
+        ax0.set_xlabel("Iteration")
+        ax0.set_ylabel("CGM cost")
+        ax0.set_title("CGM convergence")
+        phi_np = phi_t.detach().cpu().numpy().astype(np.float64)
+        phi_wrapped = np.angle(np.exp(1j * phi_np))
+        im1 = ax1.imshow(phi_wrapped, cmap="twilight", vmin=-np.pi, vmax=np.pi)
+        ax1.set_title("Optimized SLM phase")
+        ax1.set_xticks([])
+        ax1.set_yticks([])
+        fig.colorbar(im1, ax=ax1, fraction=0.046, pad=0.04, label="phase (rad)")
 
-        # Compute summary metrics on the CPU via the numpy helpers
-        E_out_np = E_out_t.detach().cpu().numpy().astype(np.complex128)
-        target_np = target_t.detach().cpu().numpy().astype(np.complex128)
-        region_np2 = region_t.detach().cpu().numpy().astype(np.float64)
-        f = fidelity(E_out_np, target_np, region_np2)
-        e = efficiency(E_out_np, region_np2)
+        plt.show()
+        plt.close(fig)
 
-        plt.figure()
-        plt.plot(cost_history)
-        plt.yscale("log")
-        plt.grid()
-        plt.xlabel("Iteration")
-        plt.ylabel("CGM cost")
-        plt.title("CGM convergence")
-        plt.savefig("cgm_convergence.png", dpi=300)
-        plt.close()
-        print(
-            f"CGM: {n_iters} iter, F={f:.4f}, eta={e:.4f}"
-        )
-
-    return phi_t.to(device=caller_device, dtype=torch.float32)
+    return phi_t.to(device=caller_device, dtype=torch.float32), E_out_t.to(device=caller_device, dtype=torch.complex64), target_t.to(device=caller_device, dtype=torch.complex64)
 
 
 # ---------------------------------------------------------------------------
@@ -544,7 +553,7 @@ def _sinc_envelope_1d_t(n, fill_factor, device, rdtype):
 def _initial_phase_1d(n, config):
     """1D Bowman-style guess phase: phi(p) = R*p^2 + D*p.
 
-    ``config.theta`` is intentionally ignored — in 1D there is no second
+    ``config.theta`` is intentionally ignored 鈥?in 1D there is no second
     axis to tilt toward, so the linear term along p absorbs any shift.
     """
     p = np.arange(n, dtype=np.float64) - (n - 1) / 2.0
@@ -840,3 +849,6 @@ def CGM_phase_generate_1d(
         print(f"CGM-1D: {n_iters} iter, F={f:.4f}, eta={e:.4f}")
 
     return phi_t.to(device=caller_device, dtype=torch.float32)
+
+
+

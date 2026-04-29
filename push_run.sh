@@ -3,7 +3,7 @@
 # and pull captured outputs back.
 #
 # Usage:
-#   ./push_run.sh <payload_file> [--hold-on]
+#   ./push_run.sh <payload_file> [--etime-us 1500] [--n-avg 20] [--hold-on]
 #
 # <payload_file> must live under payload/ (e.g. payload/sheet/foo_payload.npz,
 # payload/lg/..., payload/gline/..., payload/ring/..., payload/tophat/...,
@@ -17,6 +17,8 @@
 # (the windows_runner\ folder of the SLMengineer repo on the lab box).
 #
 # Flags:
+#   --etime-us N    Camera exposure time in microseconds (default: 1500).
+#   --n-avg N       Number of frames to average per capture (default: 20).
 #   --hold-on       Display payload on SLM and hold; no capture, no pull.
 #   --png           Convert each BMP into a 2D-color heatmap PNG on Windows
 #                   (matplotlib "hot" cmap, auto-scaled, with colorbar); pull
@@ -31,7 +33,7 @@
 set -e
 
 if [ $# -lt 1 ]; then
-    echo "usage: $0 <payload_file> [--hold-on] [--png | --png-analy]" >&2
+    echo "usage: $0 <payload_file> [--etime-us N] [--n-avg N] [--hold-on] [--png | --png-analy]" >&2
     exit 1
 fi
 
@@ -41,8 +43,12 @@ shift
 HOLD_FLAG=""
 PNG_MODE=""
 ANALY_MODE=""
+ETIME_US=1500
+N_AVG=20
 while [ $# -gt 0 ]; do
     case "$1" in
+        --etime-us)  ETIME_US="$2"; shift 2 ;;
+        --n-avg)     N_AVG="$2"; shift 2 ;;
         --hold-on)   HOLD_FLAG="--hold-on"; shift ;;
         --png)       PNG_MODE=1; shift ;;
         --png-analy) ANALY_MODE=1; shift ;;
@@ -119,18 +125,9 @@ else
     echo "  pushed ${FILENAME} (no params.json sibling)"
 fi
 
-# Pick up runner_defaults (etime_us, n_avg) from the sidecar params.json
-# so lowering exposure in the payload script actually reaches the runner.
-RUNNER_ARGS=""
-if [ -f "${PARAMS}" ]; then
-    read ETIME NAVG < <(python3 -c "
-import json, sys
-d = json.load(open('${PARAMS}')).get('runner_defaults', {})
-print(d.get('etime_us', ''), d.get('n_avg', ''))
-")
-    [ -n "${ETIME}" ] && RUNNER_ARGS+=" --etime-us ${ETIME}"
-    [ -n "${NAVG}" ]  && RUNNER_ARGS+=" --n-avg ${NAVG}"
-fi
+# Runner capture parameters are passed explicitly to runner.py.
+# Defaults keep the script usable without a params.json sidecar.
+RUNNER_ARGS=" --etime-us ${ETIME_US} --n-avg ${N_AVG}"
 
 echo "[3/4] Triggering slmrun.bat${HOLD_FLAG:+ (${HOLD_FLAG})}${RUNNER_ARGS:+ (args:${RUNNER_ARGS})}..."
 ${SSH_CMD} "cd /d \"${WIN_RUNNER_BS}\" && slmrun.bat \

@@ -4,13 +4,19 @@
 
 .DESCRIPTION
   Usage:
-    .\push_run.ps1 <payload_file> [-HoldOn] [-Png] [-PngAnaly]
+    .\push_run.ps1 <payload_file> [-EtimeUs 1500] [-NAvg 20] [-HoldOn] [-Png] [-PngAnaly]
 #>
 
 [CmdletBinding()]
 param (
     [Parameter(Mandatory=$true, Position=0)]
     [string]$Payload,
+
+    [Alias("etime-us", "etime_us")]
+    [int]$EtimeUs = 1500,
+
+    [Alias("n-avg", "n_avg")]
+    [int]$NAvg = 20,
 
     [switch]$HoldOn,
     [switch]$Png,
@@ -94,17 +100,9 @@ if (Test-Path $Params) {
     Write-Host "  pushed $Filename (no params.json sibling)"
 }
 
-# 读取附加参数
-$RunnerArgs = ""
-if (Test-Path $Params) {
-    try {
-        $pData = Get-Content $Params -Raw | ConvertFrom-Json
-        if ($null -ne $pData.runner_defaults) {
-            if ($null -ne $pData.runner_defaults.etime_us) { $RunnerArgs += " --etime-us " + $pData.runner_defaults.etime_us }
-            if ($null -ne $pData.runner_defaults.n_avg) { $RunnerArgs += " --n-avg " + $pData.runner_defaults.n_avg }
-        }
-    } catch {}
-}
+# Runner capture parameters are passed explicitly to runner.py.
+# Defaults keep the script usable without a params.json sidecar.
+$RunnerArgs = " --etime-us ${EtimeUs} --n-avg ${NAvg}"
 
 $HoldFlagStr = if ($HoldOn) { " --hold-on" } else { "" }
 $TriggerMsg = "[3/4] Triggering slmrun.bat"

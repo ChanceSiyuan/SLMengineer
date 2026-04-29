@@ -764,7 +764,7 @@ class SLM_class():  #用于生成输入输出振幅分布
 
     def light_sheet_target(
         self, flat_width, gaussian_sigma, angle=0.0, center=None, edge_sigma=0.0,
-        reweight=None, Plot=False,
+        reweight=None,
     ):
         """CGM-only: 1D top-hat (Rydberg light sheet) with Gaussian perpendicular."""
         from slm.targets import light_sheet
@@ -777,49 +777,6 @@ class SLM_class():  #用于生成输入输出振幅分布
             edge_sigma=edge_sigma,
             reweight=reweight,
         )
-        if Plot:
-            amp = np.abs(target_amp)
-            phase = np.angle(target_amp)
-            # Auto-detect a compact zoom ROI from high-amplitude support.
-            # This avoids huge boxes caused by very weak long tails.
-            peak = np.max(amp)
-            support = amp >= (peak * 0.05) if peak > 0 else np.zeros_like(amp, dtype=bool)
-            if not np.any(support):
-                support = amp > 0
-            rows, cols = np.where(support)
-            if rows.size > 0:
-                margin = 10
-                r0 = max(0, rows.min() - margin)
-                r1 = min(amp.shape[0], rows.max() + margin + 1)
-                c0 = max(0, cols.min() - margin)
-                c1 = min(amp.shape[1], cols.max() + margin + 1)
-                amp_zoom = amp[r0:r1, c0:c1]
-                phase_zoom = phase[r0:r1, c0:c1]
-                zoom_shape = amp_zoom.shape
-            else:
-                amp_zoom = amp
-                phase_zoom = phase
-                zoom_shape = amp.shape
-
-            plt.figure(figsize=(10, 8))
-            plt.subplot(2, 2, 1)
-            plt.imshow(amp, cmap="magma")
-            plt.colorbar()
-            plt.title("light sheet target amplitude")
-            plt.subplot(2, 2, 2)
-            plt.imshow(phase, cmap="twilight")
-            plt.colorbar()
-            plt.title("light sheet target phase")
-            plt.subplot(2, 2, 3)
-            plt.imshow(amp_zoom, cmap="magma")
-            plt.colorbar()
-            plt.title(f"light sheet amplitude (zoom, {zoom_shape[0]}x{zoom_shape[1]})")
-            plt.subplot(2, 2, 4)
-            plt.imshow(phase_zoom, cmap="twilight")
-            plt.colorbar()
-            plt.title(f"light sheet phase (zoom, {zoom_shape[0]}x{zoom_shape[1]})")
-            plt.tight_layout()
-            plt.show()
         return target_amp
 
     def stationary_phase_sheet(
@@ -874,7 +831,7 @@ class SLM_class():  #用于生成输入输出振幅分布
             perp_target_w_um = (
                 float(gaussian_sigma) * np.sqrt(2.0) * float(self.Focalpitchy)
             )
-        return stationary_phase_light_sheet(
+        init_phase = stationary_phase_light_sheet(
             (ny, nx),
             flat_width_um=float(flat_width) * float(self.Focalpitchx),
             w0_um=float(self.beamwaist),
@@ -886,6 +843,7 @@ class SLM_class():  #用于生成输入输出振幅分布
             beam_center_um=tuple(getattr(self, "beam_center_um", (0.0, 0.0))),
             perp_target_w_um=perp_target_w_um,
         )
+        return init_phase
 
     def stationary_phase_sheet_1d(self, flat_width, center=None):
         """1D along-x stationary-phase seed for the 1D CGM path (issue #21).
