@@ -274,7 +274,7 @@ def stationary_phase_light_sheet(
     # project's fft_propagate (fftshift . fft2 . ifftshift, norm='ortho').
     xc_um, yc_um = shift_um
     if xc_um != 0.0 or yc_um != 0.0:
-        phi = phi - 2.0 * np.pi * (xc_um * XX + yc_um * YY) / (
+        phi = phi + 2.0 * np.pi * (xc_um * XX + yc_um * YY) / (
             wavelength_um * focal_length_um
         )
 

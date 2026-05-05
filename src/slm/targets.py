@@ -226,7 +226,7 @@ def light_sheet(
             # left=right=1.0 keeps edge-taper tails (|u| > half) at their
             # un-reweighted amplitude; the reweight only affects the flat region.
             xp = np.linspace(-half, half, rw.size)
-            along = along * np.interp(u, xp, rw, left=1.0, right=1.0)
+            along = along * np.interp(u, xp, rw, left=rw[0], right=rw[-1])
 
     field = (along * perp).astype(np.complex128)
     power = np.sum(np.abs(field) ** 2)

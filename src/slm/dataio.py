@@ -28,21 +28,35 @@ def colorize(
     img: np.ndarray,
     cmap: str = "hot",
     vmax: int | None = None,
+    bbox: tuple[int, int, int, int] | None = None,  # (y0, y1, x0, x1)
+    box_color: tuple[int, int, int] = (0, 255, 255),  # 默认青色
+    box_thickness: int = 4,
 ) -> np.ndarray:
-    """Return an RGB uint8 array of *img* mapped through *cmap*.
-
-    Pure transform — no IO, no figure. Caller does
-    ``plt.imshow(colorize(arr))`` or ``Image.fromarray(...).save(...)``.
-    """
     arr = np.asarray(img)
     vmax_use = int(vmax) if vmax is not None else int(arr.max())
     vmax_use = max(vmax_use, 1)
     cm = matplotlib.colormaps[cmap]
     norm = np.clip(arr.astype(np.float32) / vmax_use, 0.0, 1.0)
-    return (cm(norm) * 255).astype(np.uint8)[..., :3]
+    rgb = (cm(norm) * 255).astype(np.uint8)[..., :3]
 
+    if bbox is not None:
+        y0, y1, x0, x1 = [int(v) for v in bbox]
+        h, w = rgb.shape[:2]
+        y0 = max(0, min(y0, h - 1))
+        y1 = max(0, min(y1, h))
+        x0 = max(0, min(x0, w - 1))
+        x1 = max(0, min(x1, w))
+        if y1 > y0 and x1 > x0:
+            t = max(int(box_thickness), 1)
+            c = np.array(box_color, dtype=np.uint8)
+            rgb[y0:y0+t, x0:x1] = c
+            rgb[y1-t:y1, x0:x1] = c
+            rgb[y0:y1, x0:x0+t] = c
+            rgb[y0:y1, x1-t:x1] = c
 
-def _detect_sheet_bbox(
+    return rgb
+
+def detect_sheet_bbox(
     after: np.ndarray, threshold_frac: float = 0.30, pad: int = 6,
 ) -> tuple[tuple[int, int, int, int], bool]:
     sig = median_filter(after, size=3)
@@ -123,6 +137,7 @@ def analyze_sheet(
     cam_pitch_um: float = CAM_PITCH_UM_DEFAULT,
     flat_a: float | None = 50,
     flat_b: float | None = 200,
+    bbox : tuple[int, int, int, int] | None = None,
 ) -> dict:
     """Analyze light-sheet uniformity from an ``after`` camera capture.
 
@@ -137,6 +152,17 @@ def analyze_sheet(
     flat_a, flat_b : float or None
         Manually selected flat-top region in *µm* along the sheet major axis.
         When None the fitted top-hat half-width is used instead.
+    auto_mode : bool
+        If True (default), auto-detect the ROI via :func:`_detect_sheet_bbox`
+        (legacy behaviour).  If False, the ROI is a fixed rectangle centered
+        on ``(shift_xum, shift_yum)`` relative to the image centre, with
+        size ``(x_range, y_range)``.  ``x_range`` and ``y_range`` are
+        required in this mode.
+    shift_xum, shift_yum : float
+        ROI box centre offset from image centre, in µm (only used when
+        ``auto_mode=False``).  Image y grows downward.
+    x_range, y_range : float or None
+        ROI box width / height in µm (only used when ``auto_mode=False``).
 
     Returns
     -------
@@ -152,8 +178,15 @@ def analyze_sheet(
         if before_arr.shape == after_arr.shape:
             after_arr = np.clip(after_arr - before_arr, 0.0, None)
             dark_corrected = True
+    (y0, y1, x0, x1), major_is_y = detect_sheet_bbox(after_arr,threshold_frac =0.3)
+    if bbox is not None:
+        y0, y1, x0, x1 = bbox
+        if x1 <= x0 or y1 <= y0:
+            raise RuntimeError(
+                f"manual ROI is empty after clipping: "
+                f"x[{x0},{x1}) y[{y0},{y1}) on image {after_arr.shape}"
+            )
 
-    (y0, y1, x0, x1), major_is_y = _detect_sheet_bbox(after_arr)
     roi = after_arr[y0:y1, x0:x1]
     ny, nx = roi.shape
 
