@@ -12,8 +12,6 @@ __version__ = "0.1.0"
 from .dataio import (  # noqa: E402,F401
     load_bmp,
     colorize,
-    analyze_sheet,
-    plot_sheet_analysis,
     compute_reweight,
     detect_sheet_bbox,
 )
